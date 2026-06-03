@@ -40,3 +40,7 @@ TAGS
 
 # vs code
 .vscode
+
+# Output directory
+/out/
+*.a
