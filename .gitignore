@@ -19,8 +19,6 @@ CMakeFiles/
 # clangd index
 /.cache/
 
-# Default install location
-/mfem/
 
 # Typical build directory
 /build/
