@@ -1,0 +1,42 @@
+
+# Object and library files
+*.o
+*.o.tmp
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+
+# Clangd server cache
+*.cache*
+
+#vscode settings
+/.vscode/
+
+# Backup files
+*~
+
+# clangd index
+/.cache/
+
+# Default install location
+/mfem/
+
+# Typical build directory
+/build/
+
+# VPATH builds
+build-*/*
+
+# PETSc automated build
+petsc-build/*
+pkg.gitcommit
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints
+
+# emacs tag file
+TAGS
+
+# vs code
+.vscode
