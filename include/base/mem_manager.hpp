@@ -24,14 +24,18 @@ enum class MemType {
   HOST_DEBUG,    // 3 HOST memory with debugging enabled
   HOST_UMPIRE,   // 4 HOST memory allocated via Umpire (if available)
   HOST_PINNED,   // 5 HOST pinned memory (page-locked, for faster GPU transfers)
-  MANAGED,       // 6
-  DEVICE,        // 7
-  DEVICE_DEBUG,  // 8
-  DEVICE_UMPIRE, // 9
-  DEVICE_UMPIRE_2, // 10
-  SIZE,            // 11
-  PRESERVE,        // 12
-  DEFAULT          // 13
+  MANAGED,       // 6 MANAGED memory (accessible from both HOST and DEVICE)
+  DEVICE,        // 7 DEVICE memory (GPU memory)
+  DEVICE_DEBUG,  // 8 DEVICE memory with debugging enabled
+  DEVICE_UMPIRE, // 9 DEVICE memory allocated via Umpire (if available)
+  DEVICE_UMPIRE_2, // 10 DEVICE memory allocated via Umpire with different
+                   // settings (e.g., different pool or arena)
+  SIZE,            // 11 Number of memory types (must be last)
+  PRESERVE, // 12 Preserve the existing memory type (used in certain operations
+            // to indicate that the memory type should not be changed)
+  DEFAULT // 13 Default memory type (used in certain operations to indicate that
+          // the default memory type should be used, which is typically HOST or
+          // MANAGED depending on the context)
 };
 
 /// Static casts to 'int' and constexprs for MemType values
@@ -109,9 +113,28 @@ protected:
 public:
   // Default constructor initializes to an empty, invalid state
   constexpr Memory() noexcept { Reset(); }
-  
-  [[deprecated("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
 
+  [[deprecated("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
+  Memory(const Memory &) = default;
+
+  Memory(Memory &&other) noexcept {
+    *this = other;
+    other.Reset();
+  }
+
+  [[deprecated("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
+  Memory &operator=(const Memory &) = default;
+
+  Memory &operator=(Memory &&other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    *this = other;
+    other.Reset();
+    return *this;
+  }
+
+  
   void Reset() noexcept;
 };
 
