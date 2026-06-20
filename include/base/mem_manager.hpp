@@ -4,7 +4,6 @@
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
-#include "../config/cconfig.hpp"
 #include "../config/config.hpp"
 
 #ifdef VFEM_USE_MPI
@@ -134,8 +133,58 @@ public:
     return *this;
   }
 
-  
+  // Create a new memory allocation of the given size. If the memory is already
+  // allocated, it will be deallocated and reallocated. The memory type is set
+  // to the default host memory type (HOST).
+
+  explicit Memory(int size) { New(size); }
+
+  // Create a new memory allocation of the given size and memory type. If the
+  // memory is already allocated, it will be deallocated and reallocated.
+
+  explicit Memory(MemType mt) { Reset(mt); }
+
+  Memory(int size, MemType mt) { New(size, mt); }
+
+  Memory(int size, MemType h_mt, MemType d_mt) { New(size, h_mt, d_mt); }
+
+  explicit Memory(T *ptr, int size, bool own) {}
+
+  // Destructor deallocates memory if owned. If the memory is not owned, it
+  // simply resets to an empty state without deallocating.
+  ~Memory() = default;
+
+  void Swap(Memory &other) {
+    Memory temp(*this);
+    *this = other;
+    other = temp;
+  }
+
+  // Reset memory to an empty, invalid state. Does not deallocate any memory or
+  // change the memory type.
   void Reset() noexcept;
+
+  // Reset the host memory and update the memory type. Does not deallocate any
+  // memory or change
+  void Reset(MemType host_mt);
+
+  bool Empty() const noexcept { return h_ptr == nullptr; }
+
+  inline void New(int size);
+
+  inline void New(int size, MemType mt);
+
+  inline void New(int size, MemType h_mt, MemType d_mt);
+
+  inline void Warp(T *ptr, int size);
+
+  inline void Warp(T *ptr, int size, MemType mt);
+
+  inline void Warp(T *ptr, int size, MemType h_mt, MemType d_mt);
+
+
+
+
 };
 
 } // namespace vfem
