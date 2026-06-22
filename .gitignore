@@ -1,4 +1,9 @@
 
+#agent
+
+/.agents
+
+
 # Object and library files
 *.o
 *.o.tmp

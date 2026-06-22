@@ -176,16 +176,28 @@ public:
 
   inline void New(int size, MemType h_mt, MemType d_mt);
 
-  inline void Warp(T *ptr, int size);
+  inline void Wrap(T *ptr, int size);
 
-  inline void Warp(T *ptr, int size, MemType mt);
+  inline void Wrap(T *ptr, int size, bool own);
 
-  inline void Warp(T *ptr, int size, MemType h_mt, MemType d_mt);
+  inline void Wrap(T *ptr, int size, MemType mt, bool own);
 
+  void Delete() noexcept {
+    if ((flags & OWNS_HOST) && h_ptr) {
+      delete[] h_ptr;
+    }
+    Reset();
+  }
 
+  void DeleteDevice(bool copy_to_host = true);
 
+  MemType GetHostMemType() const;
 
+  MemType GetDeviceMemType() const;
+
+  MemType GetMemType() const;
 };
+
 
 } // namespace vfem
 
