@@ -1,6 +1,5 @@
 #pragma once
 
-
 // GPU
 #if defined(__CUDACC__)
 #define VFEM_HOST_DEVICE __host__ __device__
