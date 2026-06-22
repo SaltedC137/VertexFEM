@@ -43,6 +43,7 @@ file(GLOB VERTEXFEM_SOURCES
 
 add_library(vertexfem ${VERTEXFEM_SOURCES})
 
+include(GNUInstallDirs)
 target_include_directories(vertexfem
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
@@ -58,7 +59,7 @@ else()
 endif()
 
 add_subdirectory(config)
-target_sources(vertexfem PUBLIC ${VFEM_CONFIG_HEADERS})
+target_sources(vertexfem PRIVATE ${VFEM_CONFIG_HEADERS})
 
 if(VERTEXFEM_BUILD_TESTS)
   add_subdirectory(test)
@@ -66,7 +67,6 @@ endif()
 
 
 # Installation
-include(GNUInstallDirs)
 install(TARGETS vertexfem
   EXPORT vertexfem-targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

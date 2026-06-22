@@ -35,8 +35,8 @@ enum class MemType
   PRESERVE, // 12 Preserve the existing memory type (used in certain operations
             // to indicate that the memory type should not be changed)
   DEFAULT   // 13 Default memory type (used in certain operations to indicate
-          // that the default memory type should be used, which is typically
-          // HOST or MANAGED depending on the context)
+            // that the default memory type should be used, which is typically
+            // HOST or MANAGED depending on the context)
 };
 
 /// Static casts to 'int' and constexprs for MemType values
@@ -174,13 +174,10 @@ public:
     Wrap (ptr, size, mt, own);
   }
 
-  // Destructor deallocates memory if owned. If the memory is not owned, it
-  // simply resets to an empty state without deallocating.
-  ~Memory ()
-  {
-    Delete ();
-  }; // Note: The destructor is not marked noexcept because it may throw if the
-     // destructor of T throws during deallocation.
+  ~Memory () = default;
+
+  // Note: The destructor is not marked noexcept because it may throw if the
+  // destructor of T throws during deallocation.
 
   void
   Swap (Memory &other)
@@ -210,23 +207,48 @@ public:
 
   inline void New (int size, MemType h_mt, MemType d_mt);
 
+  // Wrap the memory around an existing pointer. The memory will not be owned
+  // by this object, and will not be deallocated when the object is destroyed.
+  // The memory type is set to the default host memory type (HOST).
+
   inline void Wrap (T *ptr, int size);
 
   inline void Wrap (T *ptr, int size, bool own);
 
   inline void Wrap (T *ptr, int size, MemType mt, bool own);
 
-  void
-  Delete () noexcept
-  {
-    if ((flags & OWNS_HOST) && h_ptr)
-      {
-        delete[] h_ptr;
-      }
-    Reset ();
-  }
+  // void
+  // Delete () noexcept
+  // {
+  //   if ((flags & OWNS_HOST) && h_ptr)
+  //     {
+  //       delete[] h_ptr;
+  //     }
+  //   Reset ();
+  // }
 
-  void DeleteDevice (bool copy_to_host = true);
+  // void DeleteDevice (bool copy_to_host = true);
+
+  int Capacity () const noexcept;
+
+  // error checking for valid host/device pointers based on memory type and
+  // ownership flags. This is used by MemoryManager and other internal
+  // components to ensure that memory operations
+  bool HostIsValid () const noexcept;
+
+  bool DeviceIsValid () const noexcept;
+
+  // OwnsHostPtr and OwnsDevicePtr check if the memory owns the host/device
+  // pointer, which is important for determining whether the memory should be
+  // deallocated when the Memory object is destroyed or reset. This is used by
+  // MemoryManager and other internal components to manage memory lifetimes
+  // correctly and avoid memory leaks
+  
+  bool OwnsHostPtr () const noexcept;
+  bool OwnsDevicePtr () const noexcept;
+
+  bool UseDevice () const noexcept;
+  void UseDevice (bool use_dev) const noexcept;
 
   // Getters for memory type and ownership flags (used by MemoryManager and
   // other internal components)
@@ -235,6 +257,11 @@ public:
   MemType GetDeviceMemType () const noexcept;
 
   MemType GetMemType () const noexcept;
+
+  // Memory access methods
+  T *ReadWrite (MemoryClass mc, int size);
+  const T *Read (MemoryClass mc, int size) const;
+  T *Write (MemoryClass mc, int size);
 };
 
 } // namespace vfem
