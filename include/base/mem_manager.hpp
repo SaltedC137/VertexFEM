@@ -219,6 +219,18 @@ public:
 
   inline void MakeAlias (const Memory &base, int offset, int size);
 
+  inline T &operator[] (int index) noexcept;
+
+  inline const T &operator[] (int index) const noexcept;
+
+  inline operator T *() noexcept;
+
+  inline operator const T *() const noexcept;
+
+  template <typename U> inline explicit operator U *() noexcept;
+
+  template <typename U> inline explicit operator const U *() const noexcept;
+
   void
   Delete () noexcept
   {
@@ -284,11 +296,34 @@ public:
   MemType GetMemType () const noexcept;
 
   // Memory access methods
-  T *ReadWrite (MemoryClass mc, int size);
-  const T *Read (MemoryClass mc, int size) const;
-  T *Write (MemoryClass mc, int size);
+
+  inline T *ReadWrite (MemoryClass mc, int size);
+
+  inline const T *Read (MemoryClass mc, int size) const;
+
+  inline T *Write (MemoryClass mc, int size);
+
+  inline void Sync (const Memory &other) const;
+
+  inline void SyneAlias (const Memory &base, int alias_size) const;
+
+  // Memory type query methods
+  inline MemType GetMemoryType () const;
+
+  inline MemType GetHostMemoryType () const;
+
+  inline MemType GetDeviceMemoryType () const;
+
+  // Copy type methods
+  inline void CopyFrom (const Memory &other, int size);
+
+  inline const void CopyTo (const Memory &other, int size) const;
+
+  inline void CopyFromHost (const T *host_ptr, int size);
+
 };
 
+// inline function definitions
 template <typename T>
 inline void
 Memory<T>::Reset ()
