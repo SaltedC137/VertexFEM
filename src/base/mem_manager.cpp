@@ -19,7 +19,7 @@
 namespace vfem
 {
 
-MemType
+static MemType
 GetMemType (MemoryClass mc)
 {
   switch (mc)
@@ -36,7 +36,8 @@ GetMemType (MemoryClass mc)
       return MemType::MANAGED;
     }
 
-  
+
+
 
 }
 }

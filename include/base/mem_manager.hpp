@@ -211,25 +211,32 @@ public:
   // by this object, and will not be deallocated when the object is destroyed.
   // The memory type is set to the default host memory type (HOST).
 
-  inline void Wrap (T *ptr, int size);
-
-  inline void Wrap (T *ptr, int size, bool own);
-
   inline void Wrap (T *ptr, int size, MemType mt, bool own);
 
-  // void
-  // Delete () noexcept
-  // {
-  //   if ((flags & OWNS_HOST) && h_ptr)
-  //     {
-  //       delete[] h_ptr;
-  //     }
-  //   Reset ();
-  // }
+  inline void Wrap (T *h_ptr, T *d_ptr, int size, MemType h_mt, MemType d_mt,
+                    bool own, bool vaild_host = false,
+                    bool valid_device = true);
 
-  // void DeleteDevice (bool copy_to_host = true);
+  inline void MakeAlias (const Memory &base, int offset, int size);
 
-  int Capacity () const noexcept;
+  void
+  Delete () noexcept
+  {
+    if ((flags & OWNS_HOST) && h_ptr)
+      {
+        delete[] h_ptr;
+      }
+
+    Reset ();
+  }
+
+  void DeleteDevice (bool copy_to_host = true);
+
+  int
+  Capacity () const noexcept
+  {
+    return capacity;
+  }
 
   // error checking for valid host/device pointers based on memory type and
   // ownership flags. This is used by MemoryManager and other internal
@@ -238,17 +245,35 @@ public:
 
   bool DeviceIsValid () const noexcept;
 
-  // OwnsHostPtr and OwnsDevicePtr check if the memory owns the host/device
-  // pointer, which is important for determining whether the memory should be
-  // deallocated when the Memory object is destroyed or reset. This is used by
-  // MemoryManager and other internal components to manage memory lifetimes
-  // correctly and avoid memory leaks
-  
-  bool OwnsHostPtr () const noexcept;
-  bool OwnsDevicePtr () const noexcept;
+  bool
+  OwnsHostPtr () const noexcept
+  {
+    return flags & OWNS_HOST;
+  };
 
-  bool UseDevice () const noexcept;
-  void UseDevice (bool use_dev) const noexcept;
+  void
+  SetHostPtrOwner (bool own) noexcept
+  {
+    flags = own ? (flags | OWNS_HOST) : (flags & ~OWNS_HOST);
+  };
+
+  bool
+  OwnsDevicePtr () const noexcept
+  {
+    return flags & OWNS_DEVICE;
+  };
+
+  bool
+  UseDevice () const noexcept
+  {
+    return flags & USE_DEVICE;
+  };
+
+  void
+  UseDevice (bool use_dev) const noexcept
+  {
+    flags = use_dev ? (flags | USE_DEVICE) : (flags & ~USE_DEVICE);
+  };
 
   // Getters for memory type and ownership flags (used by MemoryManager and
   // other internal components)
@@ -263,6 +288,12 @@ public:
   const T *Read (MemoryClass mc, int size) const;
   T *Write (MemoryClass mc, int size);
 };
+
+template <typename T>
+inline void
+Memory<T>::Reset ()
+{
+}
 
 } // namespace vfem
 

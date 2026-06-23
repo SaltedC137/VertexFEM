@@ -47,3 +47,7 @@ TAGS
 # Output directory
 /out/
 *.a
+/bin/
+
+
+
