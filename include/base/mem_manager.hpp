@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <type_traits>
+
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
@@ -317,17 +319,64 @@ public:
   // Copy type methods
   inline void CopyFrom (const Memory &other, int size);
 
-  inline const void CopyTo (const Memory &other, int size) const;
+  inline void CopyTo (const Memory &other, int size) const;
 
   inline void CopyFromHost (const T *host_ptr, int size);
 
+  inline void CopyToHost (T *host_ptr, int size) const;
+
+  // Print the flags for debugging purposes
+
+  inline void PrintFlags () const;
+
+  inline int CompareHostAndDevice (int size) const;
+
+private:
+  static constexpr std::size_t
+  def_align_bytes_ ()
+  {
+    using namespace std;
+    return alignof (max_align_t);
+  }
+
+  static constexpr std::size_t def_align_bytes = def_align_bytes_ ();
+
+  static constexpr std::size_t new_align_bytes
+      = alignof (T) > def_align_bytes ? alignof (T) : def_align_bytes;
+
+  template <std::size_t align_bytes, bool dummy = true> struct Alloc
+  {
+    static T *
+    New (std::size_t size)
+    {
+      return new T[size];
+    }
+    static void
+    Delete (T *ptr)
+    {
+      delete[] ptr;
+    }
+  };
+
+  // Specialization for aligned allocation using C++17's aligned new/delete
+
+  static T *
+  NewHost (std::size_t size)
+  {
+    return Alloc<new_align_bytes>::New (size);
+  }
+  static void
+  DeleteHost (T *ptr)
+  {
+    Alloc<new_align_bytes>::Delete (ptr);
+  }
 };
 
-// inline function definitions
 template <typename T>
-inline void
-Memory<T>::Reset ()
+void
+swap (Memory<T> &a, Memory<T> &b) noexcept
 {
+  a.Swap (b);
 }
 
 } // namespace vfem
