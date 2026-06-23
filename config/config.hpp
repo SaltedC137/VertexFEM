@@ -88,3 +88,13 @@ inline constexpr int VFEM_SKIP_RETURN_VALUE = 242;
 #error Building with PUMI (VFEM_USE_PUMI=YES) requires MPI (VFEM_USE_MPI=YES)
 #endif
 #endif
+
+
+
+
+
+#ifdef VFEM_USE_GPU
+#include <cuda_runtime.h>
+
+
+#endif

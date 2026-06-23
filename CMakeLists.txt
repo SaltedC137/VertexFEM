@@ -5,6 +5,7 @@ project(VertexFEM
   DESCRIPTION "Vertex-centered Finite Element Method library"
   LANGUAGES CXX)
 
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -46,11 +47,21 @@ add_library(vertexfem ${VERTEXFEM_SOURCES})
 include(GNUInstallDirs)
 target_include_directories(vertexfem
   PUBLIC
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/config>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/config>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(vertexfem PUBLIC cxx_std_20)
+
+option(VFEM_USE_CUDA "Enable CUDA backend" ON)
+
+if(VFEM_USE_CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  target_compile_definitions(vertexfem PUBLIC VFEM_USE_CUDA)
+  target_include_directories(vertexfem PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+  target_link_libraries(vertexfem PUBLIC CUDA::cudart)
+  message(STATUS "Enable CUDA backend")
+endif()
 
 if(VERTEXFEM_USE_DOUBLE)
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_DOUBLE)
@@ -64,7 +75,6 @@ target_sources(vertexfem PRIVATE ${VFEM_CONFIG_HEADERS})
 if(VERTEXFEM_BUILD_TESTS)
   add_subdirectory(test)
 endif()
-
 
 # Installation
 install(TARGETS vertexfem

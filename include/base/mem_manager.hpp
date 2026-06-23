@@ -370,6 +370,28 @@ private:
   {
     Alloc<new_align_bytes>::Delete (ptr);
   }
+
+  template <MemType mt, bool dummy = true> struct AllocMem
+  {
+    static T *
+    New (std::size_t size)
+    {
+      return Alloc<new_align_bytes>::New (size);
+    }
+    static void
+    Delete (T *ptr)
+    {
+      Alloc<new_align_bytes>::Delete (ptr);
+    }
+  };
+
+
+#if 0
+
+
+#endif
+
+
 };
 
 template <typename T>
