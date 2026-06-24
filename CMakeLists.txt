@@ -5,7 +5,6 @@ project(VertexFEM
   DESCRIPTION "Vertex-centered Finite Element Method library"
   LANGUAGES CXX)
 
-
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,14 +52,24 @@ target_include_directories(vertexfem
 )
 target_compile_features(vertexfem PUBLIC cxx_std_20)
 
-option(VFEM_USE_CUDA "Enable CUDA backend" ON)
+option(VFEM_USE_CUDA "Enable CUDA backend" OFF)
 
 if(VFEM_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_CUDA)
   target_include_directories(vertexfem PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(vertexfem PUBLIC CUDA::cudart)
-  message(STATUS "Enable CUDA backend")
+  message(STATUS "Config : Enable CUDA backend")
+endif()
+
+option(VFEM_USE_HIP "Enable HIP backend" OFF)
+
+if(VFEM_USE_HIP)
+  find_package(HIP REQUIRED)
+  target_compile_definitions(vertexfem PUBLIC VFEM_USE_HIP)
+  target_include_directories(vertexfem PUBLIC ${HIP_INCLUDE_DIRS})
+  target_link_libraries(vertexfem PUBLIC HIP::device)
+  message(STATUS "Config : Enable HIP backend")
 endif()
 
 if(VERTEXFEM_USE_DOUBLE)
