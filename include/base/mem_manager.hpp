@@ -1,11 +1,10 @@
 #pragma once
 
+#define MEM_MANAGER_HPP
+#ifndef MEM_MANAGER_HPP
+
 #include <cstddef>
 #include <type_traits>
-
-#ifndef MEM_MANAGER_HPP
-#define MEM_MANAGER_HPP
-
 #include "../config/config.hpp"
 
 #ifdef VFEM_USE_MPI
@@ -386,10 +385,14 @@ private:
   };
 
 
-#if 0
+#if defined (VFEM_USE_GPU) || defined (VFEM_USE_HIP)
+
+  // Under
 
 
 #endif
+
+
 
 
 };
