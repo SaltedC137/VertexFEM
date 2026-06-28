@@ -26,12 +26,16 @@ GetMemType (MemoryClass mc)
     {
     case MemoryClass::HOST:
       return MemType::HOST;
+
     case MemoryClass::HOST_32:
       return MemType::HOST_32;
+
     case MemoryClass::HOST_64:
       return MemType::HOST_64;
+
     case MemoryClass::DEVICE:
       return MemType::DEVICE;
+
     case MemoryClass::MANAGED:
       return MemType::MANAGED;
     }

@@ -1,11 +1,11 @@
 #pragma once
 
-#define MEM_MANAGER_HPP
 #ifndef MEM_MANAGER_HPP
+#define MEM_MANAGER_HPP
 
+#include "../config/config.hpp"
 #include <cstddef>
 #include <type_traits>
-#include "../config/config.hpp"
 
 #ifdef VFEM_USE_MPI
 #define HYPRE_TIMING
@@ -384,18 +384,51 @@ private:
     }
   };
 
+#if defined(VFEM_USE_CUDA) || defined(VFEM_USE_HIP)
 
-#if defined (VFEM_USE_GPU) || defined (VFEM_USE_HIP)
+  template <typename T, std::size_t new_align_bytes = alignas (T)>
+  struct AllocDevice
+  {
+    static_assert (new_align_bytes <= 256, "cudaMalloc / hipMalloc ");
+    static T *
+    New (std::size_t size)
+    {
+      T *ptr = nullptr;
 
-  // Under
-
-
+#ifdef VFEM_USE_HIP
+      hipMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (T));
+#else
+      cudaMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (T));
 #endif
+      return ptr;
+    }
+
+    static void
+    Delete (T *ptr)
+    {
+#ifdef VFEM_USE_HIP
+      hipFree (ptr);
+#else
+      cudaFree (ptr);
+#endif
+    }
+  };
+#endif
+};
 
 
+class VFEM_EXPORT MemoryManager
+{
+private:
 
+
+public:
 
 };
+
+
+
+
 
 template <typename T>
 void
@@ -403,6 +436,23 @@ swap (Memory<T> &a, Memory<T> &b) noexcept
 {
   a.Swap (b);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 } // namespace vfem
 
