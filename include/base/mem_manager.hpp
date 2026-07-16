@@ -4,8 +4,8 @@
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
-#include "error.hpp"
 #include "config.hpp"
+#include "error.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -61,12 +61,21 @@ enum class MemoryClass
   MANAGED,
 };
 
+enum class MemorySide : std::uint8_t
+{
+  HOST,
+  DEVICE
+};
 
-enum class MemorySide : std::uint8_t { HOST, DEVICE };
+enum class AccessMode : std::uint8_t
+{
+  READ,
+  WRITE,
+  READ_WRITE
+};
 
-enum class AccessMode : std::uint8_t { READ, WRITE, READ_WRITE };
-
-enum class MemoryState : std::uint8_t {
+enum class MemoryState : std::uint8_t
+{
   EMPTY,
   UNINITIALIZED,
   HOST_VALID,
@@ -74,29 +83,104 @@ enum class MemoryState : std::uint8_t {
   SYNCHRONIZED
 };
 
-
-
-
-
-
-
-inline bool
-isHostMemory (MemType type)
+enum class Transfer : std::uint8_t
 {
-  return type <= MemType::MANAGED;
+  NONE,
+  HOST_TO_DEVICE,
+  DEVICE_TO_HOST
+};
+
+struct StateTransition
+{
+  bool allowed;
+  Transfer transfer;
+  MemoryState new_state;
+};
+
+// Get the exclusive memory state for a given memory side (host or device)
+[[nodiscard]] constexpr MemoryState
+exclusiveState (MemorySide side) noexcept
+{
+  return side == MemorySide::HOST ? MemoryState::HOST_VALID
+                                  : MemoryState::DEVICE_VALID;
 }
 
-inline bool
-isDeviceMemory (MemType type)
+// check if the memory state is valid for the given side (host or device)
+[[nodiscard]] constexpr bool
+isValidOn (MemoryState state, MemorySide side) noexcept
 {
-  return type >= MemType::MANAGED && type < MemType::SIZE;
+  return state == MemoryState::SYNCHRONIZED || state == exclusiveState (side);
 }
 
-MemType getMemType (MemoryClass mc, int index);
+[[nodiscard]] constexpr StateTransition
+nextState (MemoryState current, MemorySide target, AccessMode mode) noexcept
+{
+  const MemoryState target_state = exclusiveState (target);
 
-bool memClassContainsType (MemoryClass mc, MemType type);
+  if (mode == AccessMode::WRITE)
+    {
+      return { true, Transfer::NONE, target_state };
+    }
 
-MemoryClass operator* (MemoryClass mc1, MemoryClass mc2);
+  if (current == MemoryState::EMPTY || current == MemoryState::UNINITIALIZED)
+    {
+      return { false, Transfer::NONE, current };
+    }
+
+  if (isValidOn (current, target))
+    {
+      return { true, Transfer::NONE,
+               mode == AccessMode::READ ? current : target_state };
+    }
+
+  const Transfer transfer = target == MemorySide::HOST
+                                ? Transfer::DEVICE_TO_HOST
+                                : Transfer::HOST_TO_DEVICE;
+
+  return { true, transfer,
+           mode == AccessMode::READ ? MemoryState::SYNCHRONIZED
+                                    : target_state };
+}
+
+[[nodiscard]] inline bool
+isHostMemory (MemType type) noexcept
+{
+  switch (type)
+    {
+    case MemType::HOST:
+    case MemType::HOST_32:
+    case MemType::HOST_64:
+    case MemType::HOST_DEBUG:
+    case MemType::HOST_UMPIRE:
+    case MemType::HOST_PINNED:
+    case MemType::MANAGED:
+      return true;
+    default:
+      return false;
+    }
+}
+
+[[nodiscard]] inline bool
+isDeviceMemory (MemType type) noexcept
+{
+  switch (type)
+    {
+    case MemType::MANAGED:
+    case MemType::DEVICE:
+    case MemType::DEVICE_DEBUG:
+    case MemType::DEVICE_UMPIRE:
+    case MemType::DEVICE_UMPIRE_2:
+      return true;
+    default:
+      return false;
+    }
+}
+
+VFEM_EXPORT MemType getMemType (MemoryClass mc, int index = 0);
+
+VFEM_EXPORT bool memClassContainsType (MemoryClass mc, MemType type);
+
+VFEM_EXPORT MemoryClass operator* (MemoryClass mc1, MemoryClass mc2);
 
 /// Class used by VFEM to manage memory allocations and deallocations across
 /// different memory types.
@@ -188,7 +272,10 @@ public:
 
   Memory (int size, MemType mt) { alloCate (size, mt); }
 
-  Memory (int size, MemType h_mt, MemType d_mt) { alloCate (size, h_mt, d_mt); }
+  Memory (int size, MemType h_mt, MemType d_mt)
+  {
+    alloCate (size, h_mt, d_mt);
+  }
 
   explicit Memory (T *ptr, int size, MemType mt, bool own)
   {
@@ -446,14 +533,10 @@ private:
   template <typename T> friend class Memory;
 
 public:
+  using allocateFunc = void *(*)(std::size_t size, MemType mt);
 };
 
-template <typename T>
-void
-swap (Memory<T> &a, Memory<T> &b) noexcept
-{
-  a.Swap (b);
-}
+
 
 } // namespace vfem
 
