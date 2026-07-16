@@ -3,8 +3,6 @@
 #ifndef VFEM_ERROR_HPP
 #define VFEM_ERROR_HPP
 
-#include "../config/config.hpp"
-
 #include <atomic>
 #include <cstdlib>
 
@@ -50,7 +48,7 @@ inline std::atomic<ErrorAction> current_error_action{
 };
 
 inline std::string
-with_location (std::string_view message, const std::source_location &location)
+withLocation (std::string_view message, const std::source_location &location)
 {
   std::ostringstream stream;
   stream << message << "\n ... in function: " << location.function_name ()
@@ -62,29 +60,29 @@ with_location (std::string_view message, const std::source_location &location)
 } // namespace detail
 
 inline void
-set_error_action (ErrorAction action) noexcept
+setErrorAction (ErrorAction action) noexcept
 {
   detail::current_error_action.store (action, std::memory_order_relaxed);
 }
 
 inline ErrorAction
-get_error_action () noexcept
+getErrorAction () noexcept
 {
   return detail::current_error_action.load (std::memory_order_relaxed);
 }
 
 inline void
-vfem_error (std::string_view message = {}, const std::source_location &location
+vfemError (std::string_view message = {}, const std::source_location &location
                                            = std::source_location::current ())
 {
-  if (get_error_action () == ErrorAction::Ignore)
+  if (getErrorAction () == ErrorAction::Ignore)
     {
       return;
     }
 
-  const std::string full_message = detail::with_location (message, location);
+  const std::string full_message = detail::withLocation (message, location);
 
-  if (get_error_action () == ErrorAction::Throw)
+  if (getErrorAction () == ErrorAction::Throw)
     {
 #if defined(__cpp_exceptions)
       throw ErrorException (full_message);
@@ -99,11 +97,11 @@ vfem_error (std::string_view message = {}, const std::source_location &location
 }
 
 inline void
-vfem_warning (std::string_view message = {},
+vfemWarning (std::string_view message = {},
               const std::source_location &location
               = std::source_location::current ())
 {
-  const std::string full_message = detail::with_location (message, location);
+  const std::string full_message = detail::withLocation (message, location);
   std::fputs (full_message.c_str (), stderr);
 }
 

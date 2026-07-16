@@ -1,9 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
-#include "../config/config.hpp"
+#include "error.hpp"
+#include "config.hpp"
+
 #include <cstddef>
 #include <type_traits>
 
@@ -51,30 +54,47 @@ extern VFEM_EXPORT const char *MemTypeName[MemTypeSize];
 
 enum class MemoryClass
 {
-
   HOST,
   HOST_32,
   HOST_64,
   DEVICE,
   MANAGED,
-
 };
 
+
+enum class MemorySide : std::uint8_t { HOST, DEVICE };
+
+enum class AccessMode : std::uint8_t { READ, WRITE, READ_WRITE };
+
+enum class MemoryState : std::uint8_t {
+  EMPTY,
+  UNINITIALIZED,
+  HOST_VALID,
+  DEVICE_VALID,
+  SYNCHRONIZED
+};
+
+
+
+
+
+
+
 inline bool
-IsHostMemory (MemType type)
+isHostMemory (MemType type)
 {
   return type <= MemType::MANAGED;
 }
 
 inline bool
-IsDeviceMemory (MemType type)
+isDeviceMemory (MemType type)
 {
   return type >= MemType::MANAGED && type < MemType::SIZE;
 }
 
-MemType GetMemType (MemoryClass mc, int index);
+MemType getMemType (MemoryClass mc, int index);
 
-bool MemClassContainsType (MemoryClass mc, MemType type);
+bool memClassContainsType (MemoryClass mc, MemType type);
 
 MemoryClass operator* (MemoryClass mc1, MemoryClass mc2);
 
@@ -89,7 +109,7 @@ template <DeviceCopyable T> class Memory
 {
 protected:
   friend class MemoryManager;
-  friend void MemoryPrintFlags (unsigned flags);
+  friend void memoryPrintFlags (unsigned flags);
 
   enum FlagMask : unsigned
   {
@@ -125,7 +145,7 @@ protected:
 
 public:
   // Default constructor initializes to an empty, invalid state
-  constexpr Memory () noexcept { Reset (); }
+  constexpr Memory () noexcept { reSet (); }
 
   [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
 
@@ -135,7 +155,7 @@ public:
   Memory (Memory &&other) noexcept
   {
     *this = other;
-    other.Reset ();
+    other.reSet ();
   }
 
   [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
@@ -151,7 +171,7 @@ public:
         return *this;
       }
     *this = other;
-    other.Reset ();
+    other.reSet ();
     return *this;
   }
 
@@ -159,20 +179,20 @@ public:
   // allocated, it will be deallocated and reallocated. The memory type is set
   // to the default host memory type (HOST).
 
-  explicit Memory (int size) { New (size); }
+  explicit Memory (int size) { alloCate (size); }
 
   // Create a new memory allocation of the given size and memory type. If the
   // memory is already allocated, it will be deallocated and reallocated.
 
-  explicit Memory (MemType mt) { Reset (mt); }
+  explicit Memory (MemType mt) { reSet (mt); }
 
-  Memory (int size, MemType mt) { New (size, mt); }
+  Memory (int size, MemType mt) { alloCate (size, mt); }
 
-  Memory (int size, MemType h_mt, MemType d_mt) { New (size, h_mt, d_mt); }
+  Memory (int size, MemType h_mt, MemType d_mt) { alloCate (size, h_mt, d_mt); }
 
   explicit Memory (T *ptr, int size, MemType mt, bool own)
   {
-    Wrap (ptr, size, mt, own);
+    wrap (ptr, size, mt, own);
   }
 
   ~Memory () = default;
@@ -181,7 +201,7 @@ public:
   // destructor of T throws during deallocation.
 
   void
-  Swap (Memory &other)
+  sWap (Memory &other)
   {
     Memory temp (*this);
     *this = other;
@@ -190,35 +210,35 @@ public:
 
   // Reset memory to an empty, invalid state. Does not deallocate any memory or
   // change the memory type.
-  void Reset () noexcept;
+  void reSet () noexcept;
 
   // Reset the host memory and update the memory type. Does not deallocate any
   // memory or change
-  void Reset (MemType host_mt);
+  void reSet (MemType host_mt);
 
   bool
-  Empty () const noexcept
+  emPty () const noexcept
   {
     return h_ptr == nullptr;
   }
 
-  inline void New (int size);
+  inline void alloCate (int size);
 
-  inline void New (int size, MemType mt);
+  inline void alloCate (int size, MemType mt);
 
-  inline void New (int size, MemType h_mt, MemType d_mt);
+  inline void alloCate (int size, MemType h_mt, MemType d_mt);
 
   // Wrap the memory around an existing pointer. The memory will not be owned
   // by this object, and will not be deallocated when the object is destroyed.
   // The memory type is set to the default host memory type (HOST).
 
-  inline void Wrap (T *ptr, int size, MemType mt, bool own);
+  inline void wrap (T *ptr, int size, MemType mt, bool own);
 
-  inline void Wrap (T *h_ptr, T *d_ptr, int size, MemType h_mt, MemType d_mt,
+  inline void wrap (T *h_ptr, T *d_ptr, int size, MemType h_mt, MemType d_mt,
                     bool own, bool vaild_host = false,
                     bool valid_device = true);
 
-  inline void MakeAlias (const Memory &base, int offset, int size);
+  inline void makeAlias (const Memory &base, int offset, int size);
 
   inline T &operator[] (int index) noexcept;
 
@@ -233,20 +253,18 @@ public:
   template <typename U> inline explicit operator const U *() const noexcept;
 
   void
-  Delete () noexcept
+  reLease () noexcept
   {
     if ((flags & OWNS_HOST) && h_ptr)
       {
         delete[] h_ptr;
       }
-
-    Reset ();
+    reSet ();
   }
 
-  void DeleteDevice (bool copy_to_host = true);
-
+  void deleteDevice (bool copy_to_host = true);
   int
-  Capacity () const noexcept
+  caPacity () const noexcept
   {
     return capacity;
   }
@@ -254,91 +272,91 @@ public:
   // error checking for valid host/device pointers based on memory type and
   // ownership flags. This is used by MemoryManager and other internal
   // components to ensure that memory operations
-  bool HostIsValid () const noexcept;
+  bool hostIsValid () const noexcept;
 
-  bool DeviceIsValid () const noexcept;
+  bool deviceIsValid () const noexcept;
 
   bool
-  OwnsHostPtr () const noexcept
+  ownsHostPtr () const noexcept
   {
     return flags & OWNS_HOST;
   };
 
   void
-  SetHostPtrOwner (bool own) noexcept
+  setHostPtrOwner (bool own) noexcept
   {
     flags = own ? (flags | OWNS_HOST) : (flags & ~OWNS_HOST);
   };
 
   bool
-  OwnsDevicePtr () const noexcept
+  ownsDevicePtr () const noexcept
   {
     return flags & OWNS_DEVICE;
   };
 
   bool
-  UseDevice () const noexcept
+  useDevice () const noexcept
   {
     return flags & USE_DEVICE;
   };
 
   void
-  UseDevice (bool use_dev) const noexcept
+  useDevice (bool use_dev) const noexcept
   {
     flags = use_dev ? (flags | USE_DEVICE) : (flags & ~USE_DEVICE);
   };
 
   // Getters for memory type and ownership flags (used by MemoryManager and
   // other internal components)
-  MemType GetHostMemType () const noexcept;
+  MemType getHostMemType () const noexcept;
 
-  MemType GetDeviceMemType () const noexcept;
+  MemType getDeviceMemType () const noexcept;
 
-  MemType GetMemType () const noexcept;
+  MemType getMemType () const noexcept;
 
   // Memory access methods
 
-  inline T *ReadWrite (MemoryClass mc, int size);
+  inline T *readWrite (MemoryClass mc, int size);
 
-  inline const T *Read (MemoryClass mc, int size) const;
+  inline const T *read (MemoryClass mc, int size) const;
 
-  inline T *Write (MemoryClass mc, int size);
+  inline T *write (MemoryClass mc, int size);
 
-  inline void Sync (const Memory &other) const;
+  inline void sync (const Memory &other) const;
 
-  inline void SyneAlias (const Memory &base, int alias_size) const;
+  inline void syneAlias (const Memory &base, int alias_size) const;
 
   // Memory type query methods
-  inline MemType GetMemoryType () const;
+  inline MemType getMemoryType () const;
 
-  inline MemType GetHostMemoryType () const;
+  inline MemType getHostMemoryType () const;
 
-  inline MemType GetDeviceMemoryType () const;
+  inline MemType getDeviceMemoryType () const;
 
   // Copy type methods
-  inline void CopyFrom (const Memory &other, int size);
+  inline void copyFrom (const Memory &other, int size);
 
-  inline void CopyTo (const Memory &other, int size) const;
+  inline void copyTo (const Memory &other, int size) const;
 
-  inline void CopyFromHost (const T *host_ptr, int size);
+  inline void copyFromHost (const T *host_ptr, int size);
 
-  inline void CopyToHost (T *host_ptr, int size) const;
+  inline void copyToHost (T *host_ptr, int size) const;
 
   // Print the flags for debugging purposes
 
-  inline void PrintFlags () const;
+  inline void printFlags () const;
 
-  inline int CompareHostAndDevice (int size) const;
+  inline int compareHostAndDevice (int size) const;
 
 private:
   static constexpr std::size_t
-  def_align_bytes_ ()
+  defAlignBytes ()
   {
     using namespace std;
     return alignof (max_align_t);
   }
 
-  static constexpr std::size_t def_align_bytes = def_align_bytes_ ();
+  static constexpr std::size_t def_align_bytes = defAlignBytes ();
 
   static constexpr std::size_t new_align_bytes
       = alignof (T) > def_align_bytes ? alignof (T) : def_align_bytes;
@@ -360,12 +378,12 @@ private:
   // Specialization for aligned allocation using C++17's aligned new/delete
 
   static T *
-  NewHost (std::size_t size)
+  newHost (std::size_t size)
   {
     return Alloc<new_align_bytes>::New (size);
   }
   static void
-  DeleteHost (T *ptr)
+  deleteHost (T *ptr)
   {
     Alloc<new_align_bytes>::Delete (ptr);
   }
@@ -416,19 +434,19 @@ private:
 #endif
 };
 
-
 class VFEM_EXPORT MemoryManager
 {
 private:
+  typedef MemType MType;
+  typedef Memory<int> MemInt;
 
+  // MemoryManager is a singleton class that manages memory allocations and
+  // deallocations across different memory types. It provides methods to
+  // allocate, deallocate, and manage memory for different types of data.
+  template <typename T> friend class Memory;
 
 public:
-
 };
-
-
-
-
 
 template <typename T>
 void
@@ -436,23 +454,6 @@ swap (Memory<T> &a, Memory<T> &b) noexcept
 {
   a.Swap (b);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 } // namespace vfem
 

@@ -1,6 +1,11 @@
 
-#agent
 
+# package files
+package-lock.json
+package.json
+
+
+#agent
 /.agents
 
 
