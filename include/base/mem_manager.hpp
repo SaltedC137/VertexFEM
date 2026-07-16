@@ -233,7 +233,7 @@ public:
 
   [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
 
-  Memory (const Memory &)
+  Memory &operator= (const Memory &)
       = default;
 
   Memory (Memory &&other) noexcept
@@ -535,8 +535,6 @@ private:
 public:
   using allocateFunc = void *(*)(std::size_t size, MemType mt);
 };
-
-
 
 } // namespace vfem
 
