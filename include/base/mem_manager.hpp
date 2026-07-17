@@ -5,7 +5,6 @@
 #define MEM_MANAGER_HPP
 
 #include "config.hpp"
-#include "error.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -244,7 +243,7 @@ public:
 
   [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
 
-  Memory &operator= (const Memory &)
+  Memory (const Memory &)
       = default;
 
   Memory &
@@ -530,7 +529,7 @@ private:
   // MemoryManager is a singleton class that manages memory allocations and
   // deallocations across different memory types. It provides methods to
   // allocate, deallocate, and manage memory for different types of data.
-  template <typename T> friend class Memory;
+  
 
 public:
   using allocateFunc = void *(*)(std::size_t size, MemType mt);
