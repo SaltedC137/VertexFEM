@@ -73,7 +73,7 @@ getErrorAction () noexcept
 
 inline void
 vfemError (std::string_view message = {}, const std::source_location &location
-                                           = std::source_location::current ())
+                                          = std::source_location::current ())
 {
   if (getErrorAction () == ErrorAction::Ignore)
     {
@@ -98,8 +98,8 @@ vfemError (std::string_view message = {}, const std::source_location &location
 
 inline void
 vfemWarning (std::string_view message = {},
-              const std::source_location &location
-              = std::source_location::current ())
+             const std::source_location &location
+             = std::source_location::current ())
 {
   const std::string full_message = detail::withLocation (message, location);
   std::fputs (full_message.c_str (), stderr);

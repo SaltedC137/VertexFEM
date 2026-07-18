@@ -20,7 +20,7 @@ namespace vfem
 {
 
 static MemType
-GetMemType (MemoryClass mc)
+getMemType (MemoryClass mc)
 {
   switch (mc)
     {
@@ -39,9 +39,5 @@ GetMemType (MemoryClass mc)
     case MemoryClass::MANAGED:
       return MemType::MANAGED;
     }
-
-
-
-
 }
 }

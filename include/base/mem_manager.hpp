@@ -5,6 +5,7 @@
 #define MEM_MANAGER_HPP
 
 #include "config.hpp"
+#include "error.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -188,6 +189,22 @@ template <typename T>
 concept DeviceCopyable
     = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
 
+using DeallocateFunc = void (*) (void *, std::size_t alignment) noexcept;
+
+struct MemoryRecord final
+{
+  void *h_ptr{};
+  void *d_ptr{};
+  std::size_t bytes{};
+  std::size_t alignment{ alignof (std::max_align_t) };
+  MemType h_mt{ MemType ::HOST };
+  MemType d_mt{ MemType ::DEVICE };
+  DeallocateFunc h_deallocate{};
+  DeallocateFunc d_deallocate{};
+  MemoryState state{ MemoryState::EMPTY };
+  ~MemoryRecord () noexcept;
+};
+
 template <DeviceCopyable T> class Memory
 {
 protected:
@@ -228,7 +245,7 @@ protected:
 
 public:
   // Default constructor initializes to an empty, invalid state
-  constexpr Memory () noexcept { reSet (); }
+  constexpr Memory () noexcept { reset (); }
 
   [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
 
@@ -238,7 +255,7 @@ public:
   Memory (Memory &&other) noexcept
   {
     *this = other;
-    other.reSet ();
+    other.reset ();
   }
 
   [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
@@ -254,7 +271,7 @@ public:
         return *this;
       }
     *this = other;
-    other.reSet ();
+    other.reset ();
     return *this;
   }
 
@@ -267,7 +284,7 @@ public:
   // Create a new memory allocation of the given size and memory type. If the
   // memory is already allocated, it will be deallocated and reallocated.
 
-  explicit Memory (MemType mt) { reSet (mt); }
+  explicit Memory (MemType mt) { reset (mt); }
 
   Memory (int size, MemType mt) { alloCate (size, mt); }
 
@@ -287,23 +304,23 @@ public:
   // destructor of T throws during deallocation.
 
   void
-  sWap (Memory &other)
+  swap (Memory &other) noexcept
   {
     Memory temp (*this);
     *this = other;
     other = temp;
   }
 
-  // Reset memory to an empty, invalid state. Does not deallocate any memory or
+  // reset memory to an empty, invalid state. Does not deallocate any memory or
   // change the memory type.
-  void reSet () noexcept;
+  void reset () noexcept;
 
-  // Reset the host memory and update the memory type. Does not deallocate any
+  // reset the host memory and update the memory type. Does not deallocate any
   // memory or change
-  void reSet (MemType host_mt);
+  void reset (MemType host_mt);
 
   bool
-  emPty () const noexcept
+  empty () const noexcept
   {
     return h_ptr == nullptr;
   }
@@ -339,18 +356,19 @@ public:
   template <typename U> inline explicit operator const U *() const noexcept;
 
   void
-  reLease () noexcept
+  release () noexcept
   {
     if ((flags & OWNS_HOST) && h_ptr)
       {
         delete[] h_ptr;
       }
-    reSet ();
+    reset ();
   }
 
   void deleteDevice (bool copy_to_host = true);
+
   int
-  caPacity () const noexcept
+  capaCity () const noexcept
   {
     return capacity;
   }
@@ -410,7 +428,7 @@ public:
 
   inline void sync (const Memory &other) const;
 
-  inline void syneAlias (const Memory &base, int alias_size) const;
+  inline void syncAlias (const Memory &base, int alias_size) const;
 
   // Memory type query methods
   inline MemType getMemoryType () const;
@@ -520,19 +538,49 @@ private:
 #endif
 };
 
+template <DeviceCopyable T> class Memory;
+
 class VFEM_EXPORT MemoryManager
 {
-private:
-  typedef MemType MType;
-  typedef Memory<int> MemInt;
-
-  // MemoryManager is a singleton class that manages memory allocations and
-  // deallocations across different memory types. It provides methods to
-  // allocate, deallocate, and manage memory for different types of data.
-  
-
 public:
-  using allocateFunc = void *(*)(std::size_t size, MemType mt);
+  using AllocateFunc = void *(*)(std::size_t bytes, std::size_t alignment);
+  using CopyFunc = void (*) (void *dst, const void *src, std::size_t bytes);
+  using DeallocateFunc = DeallocateFunc;
+
+  struct Backend
+  {
+    AllocateFunc allocate{};
+    DeallocateFunc deallocate{};
+  };
+
+  /// Configure backends before any Memory object starts using the type.
+  static MemoryManager &get () noexcept;
+
+  void registerBackend (MemType type, Backend backend);
+  void registerCopy (MemType dst, MemType src, CopyFunc copy);
+
+  [[nodiscard]] bool supports (MemType type) const noexcept;
+
+private:
+  template <DeviceCopyable T> friend class Memory;
+
+  MemoryManager ();
+
+  [[nodiscard]] DeallocateFunc getDeallocate (MemType type) const;
+
+  void allocate (MemoryRecord &record, MemorySide side);
+  void *access (MemoryRecord &record, MemorySide side,
+                AccessMode mode);
+  void deleteDevice (MemoryRecord &record, bool copy_to_host);
+  void copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
+             std::size_t bytes);
+
+  [[nodiscard]] static bool isConcreteType (MemType type) noexcept;
+  [[nodiscard]] static std::size_t typeIndex (MemType type);
+
+  std::array<Backend, MemTypeSize> backends_{};
+  std::array<CopyFunc, MemTypeSize * MemTypeSize> copies_{};
+  mutable std::mutex backend_mutex_;
 };
 
 } // namespace vfem
