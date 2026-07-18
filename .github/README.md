@@ -1,5 +1,8 @@
 # VertexFEM
 
+> 🚧 **Under construction** — Architecture design phase, core modules not yet implemented. Infrastructure (error handling, memory manager, benchmarking) is complete.
+
+
 **Vertex-centered Finite Element Method library — work in progress.**
 
 VertexFEM is a high-performance C++20 library for vertex-centered finite element methods, targeting both CPU and GPU architectures with MPI-based distributed parallelism.
