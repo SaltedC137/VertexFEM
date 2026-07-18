@@ -7,8 +7,11 @@
 #include "config.hpp"
 #include "error.hpp"
 
+#include <array>
 #include <cstddef>
+#include <mutex>
 #include <type_traits>
+#include <utility>
 
 #ifdef VFEM_USE_MPI
 #define HYPRE_TIMING
@@ -236,12 +239,12 @@ protected:
 
   /// Pointer to the memory. Not owned.
 
-  T *h_ptr;
-  T *d_ptr;
-  int capacity;
-  MemType h_mt;
-  MemType d_mt;
-  mutable unsigned flags;
+  T *h_ptr{};
+  T *d_ptr{};
+  int capacity{};
+  MemType h_mt{ MemType::HOST };
+  MemType d_mt{ MemType::DEVICE };
+  mutable unsigned flags{};
 
 public:
   // Default constructor initializes to an empty, invalid state
@@ -279,18 +282,18 @@ public:
   // allocated, it will be deallocated and reallocated. The memory type is set
   // to the default host memory type (HOST).
 
-  explicit Memory (int size) { alloCate (size); }
+  explicit Memory (int size) { allocate (size); }
 
   // Create a new memory allocation of the given size and memory type. If the
   // memory is already allocated, it will be deallocated and reallocated.
 
   explicit Memory (MemType mt) { reset (mt); }
 
-  Memory (int size, MemType mt) { alloCate (size, mt); }
+  Memory (int size, MemType mt) { allocate (size, mt); }
 
   Memory (int size, MemType h_mt, MemType d_mt)
   {
-    alloCate (size, h_mt, d_mt);
+    allocate (size, h_mt, d_mt);
   }
 
   explicit Memory (T *ptr, int size, MemType mt, bool own)
@@ -306,18 +309,52 @@ public:
   void
   swap (Memory &other) noexcept
   {
-    Memory temp (*this);
-    *this = other;
-    other = temp;
+    using std::swap;
+    swap (h_ptr, other.h_ptr);
+    swap (d_ptr, other.d_ptr);
+    swap (capacity, other.capacity);
+    swap (h_mt, other.h_mt);
+    swap (d_mt, other.d_mt);
+    swap (flags, other.flags);
   }
 
-  // reset memory to an empty, invalid state. Does not deallocate any memory or
-  // change the memory type.
-  void reset () noexcept;
+  // Reset memory to an empty state without releasing storage or changing
+  // types.
+  constexpr void
+  reset () noexcept
+  {
+    h_ptr = nullptr;
+    d_ptr = nullptr;
+    capacity = 0;
+    flags = 0;
+  }
 
-  // reset the host memory and update the memory type. Does not deallocate any
-  // memory or change
-  void reset (MemType host_mt);
+  // Reset memory to an empty state and configure its host/device memory types.
+  void
+  reset (MemType memory_type)
+  {
+    if (!isHostMemory (memory_type) && !isDeviceMemory (memory_type))
+      {
+        vfemError ("memory type is not a concrete backend type");
+        return;
+      }
+    reset ();
+    if (memory_type == MemType::MANAGED)
+      {
+        h_mt = MemType::MANAGED;
+        d_mt = MemType::MANAGED;
+      }
+    else if (isDeviceMemory (memory_type))
+      {
+        h_mt = MemType::HOST;
+        d_mt = memory_type;
+      }
+    else
+      {
+        h_mt = memory_type;
+        d_mt = MemType::DEVICE;
+      }
+  }
 
   bool
   empty () const noexcept
@@ -325,11 +362,11 @@ public:
     return h_ptr == nullptr;
   }
 
-  inline void alloCate (int size);
+  inline void allocate (int size);
 
-  inline void alloCate (int size, MemType mt);
+  inline void allocate (int size, MemType mt);
 
-  inline void alloCate (int size, MemType h_mt, MemType d_mt);
+  inline void allocate (int size, MemType h_mt, MemType d_mt);
 
   // Wrap the memory around an existing pointer. The memory will not be owned
   // by this object, and will not be deallocated when the object is destroyed.
@@ -538,19 +575,23 @@ private:
 #endif
 };
 
-template <DeviceCopyable T> class Memory;
+// MemoryManager class manages memory allocations and deallocations across
+// different memory types (HOST, DEVICE, MANAGED, etc.). It provides methods to
+// register backends for memory allocation and deallocation, as well as methods
+// to copy data between different memory types. The class also maintains a
+// mapping of memory types to their corresponding backends and copy functions.
 
 class VFEM_EXPORT MemoryManager
 {
 public:
   using AllocateFunc = void *(*)(std::size_t bytes, std::size_t alignment);
   using CopyFunc = void (*) (void *dst, const void *src, std::size_t bytes);
-  using DeallocateFunc = DeallocateFunc;
+  using BackendDeallocateFunc = ::vfem::DeallocateFunc;
 
   struct Backend
   {
     AllocateFunc allocate{};
-    DeallocateFunc deallocate{};
+    BackendDeallocateFunc deallocate{};
   };
 
   /// Configure backends before any Memory object starts using the type.
@@ -566,11 +607,10 @@ private:
 
   MemoryManager ();
 
-  [[nodiscard]] DeallocateFunc getDeallocate (MemType type) const;
+  [[nodiscard]] BackendDeallocateFunc getDeallocate (MemType type) const;
 
   void allocate (MemoryRecord &record, MemorySide side);
-  void *access (MemoryRecord &record, MemorySide side,
-                AccessMode mode);
+  void *access (MemoryRecord &record, MemorySide side, AccessMode mode);
   void deleteDevice (MemoryRecord &record, bool copy_to_host);
   void copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
              std::size_t bytes);
