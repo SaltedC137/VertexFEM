@@ -12,13 +12,13 @@ registry ()
 }
 
 void
-register_bench (const char *name, void (*fn) ())
+registerBench (const char *name, void (*fn) ())
 {
   registry ().push_back ({ name, fn, 0.0, 0.0, 0 });
 }
 
 void
-run_all_benchmarks (int warmup, int iters)
+runAllBenchmarks (int warmup, int iters)
 {
   for (auto &b : registry ())
     {
@@ -38,7 +38,7 @@ run_all_benchmarks (int warmup, int iters)
           b.fn ();
           BENCH_DO_NOT_OPTIMIZE (0);
           uint64_t t1 = ticks ();
-          double ns = ticks_to_ns (t1 - t0);
+          double ns = ticksToNs (t1 - t0);
           sum += ns;
           min = std::min (ns, min);
         }

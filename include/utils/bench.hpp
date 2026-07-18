@@ -17,7 +17,7 @@
 
 // Detect TSC frequency in MHz, cached after first call.
 // Priority: Intel CPUID → AMD CPUID → Linux sysfs → runtime calibration
-inline double tsc_freq_mhz() {
+inline double tscFreqMhz() {
   static const double mhz = []() {
 #if defined(__GNUC__) || defined(__clang__)
     unsigned int eax;
@@ -77,8 +77,8 @@ inline double tsc_freq_mhz() {
 
 inline uint64_t ticks() { return __rdtsc(); }
 
-inline double ticks_to_ns(uint64_t ticks) {
-  return (double)ticks * 1000.0 / tsc_freq_mhz();
+inline double ticksToNs(uint64_t ticks) {
+  return (double)ticks * 1000.0 / tscFreqMhz();
 }
 
 #else
@@ -107,8 +107,8 @@ struct BenchEntry {
   int iters;
 };
 
-void register_bench(const char *name, void (*fn)());
-void run_all_benchmarks(int warmup = 5, int iters = 1000);
+void registerBench(const char *name, void (*fn)());
+void runAllBenchmarks(int warmup = 5, int iters = 1000);
 
 #define BENCHMARK(func)                                                        \
   void func();                                                                 \
