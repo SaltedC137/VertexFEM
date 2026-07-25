@@ -284,9 +284,7 @@ public:
   bool empty () const noexcept;
 
   inline void allocate (int size);
-
   inline void allocate (int size, MemType mt);
-
   inline void allocate (int size, MemType h_mt, MemType d_mt);
 
   // Wrap the memory around an existing pointer. The memory will not be owned
@@ -294,11 +292,9 @@ public:
   // The memory type is set to the default host memory type (HOST).
 
   inline void wrap (T *ptr, int size, MemType mt, bool own);
-
   inline void wrap (T *h_ptr, T *d_ptr, int size, MemType h_mt, MemType d_mt,
                     bool own, bool vaild_host = false,
                     bool valid_device = true);
-
   inline void makeAlias (const Memory &base, int offset, int size);
 
   inline T &operator[] (int index) noexcept;
@@ -345,40 +341,55 @@ public:
     flags = use_dev ? (flags | USE_DEVICE) : (flags & ~USE_DEVICE);
   };
 
-  // Getters for memory type and ownership flags (used by MemoryManager and
-  // other internal components)
-  MemType getHostMemType () const noexcept;
-
-  MemType getDeviceMemType () const noexcept;
-
-  MemType getMemType () const noexcept;
-
-  // Memory access methods
-
-  inline T *readWrite (MemoryClass mc, int size);
-
-  inline const T *read (MemoryClass mc, int size) const;
-
-  inline T *write (MemoryClass mc, int size);
-
   inline void sync (const Memory &other) const;
 
   inline void syncAlias (const Memory &base, int alias_size) const;
 
+  // Getters for memory type and ownership flags (used by MemoryManager and
+  // other internal components)
+  [[nodiscard]] MemType
+  getHostMemType () const noexcept
+  {
+    return h_mt;
+  }
+
+  [[nodiscard]] MemType
+  getDeviceMemType () const noexcept
+  {
+    return d_mt;
+  }
+
+  [[nodiscard]] MemType getMemType () const noexcept;
+
+  // Memory access methods
+
+  inline T *readWrite (MemoryClass mc, int size);
+  inline const T *read (MemoryClass mc, int size) const;
+  inline T *write (MemoryClass mc, int size);
+
   // Memory type query methods
-  inline MemType getMemoryType () const;
+  MemType
+  getMemoryType () const noexcept
+  {
+    return getMemType ();
+  };
 
-  inline MemType getHostMemoryType () const;
+  MemType
+  getHostMemoryType () const noexcept
+  {
+    return h_mt;
+  };
 
-  inline MemType getDeviceMemoryType () const;
+  MemType
+  getDeviceMemoryType () const noexcept
+  {
+    return d_mt;
+  };
 
   // Copy type methods
   inline void copyFrom (const Memory &other, int size);
-
   inline void copyTo (const Memory &other, int size) const;
-
   inline void copyFromHost (const T *host_ptr, int size);
-
   inline void copyToHost (T *host_ptr, int size) const;
 
   // Print the flags for debugging purposes
