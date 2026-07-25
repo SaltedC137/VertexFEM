@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <mutex>
 #include <type_traits>
-#include <utility>
 
 #ifdef VFEM_USE_MPI
 #define HYPRE_TIMING
@@ -180,10 +179,9 @@ isDeviceMemory (MemType type) noexcept
 }
 
 VFEM_EXPORT MemType getMemType (MemoryClass mc, int index = 0);
-
 VFEM_EXPORT bool memClassContainsType (MemoryClass mc, MemType type);
-
 VFEM_EXPORT MemoryClass operator* (MemoryClass mc1, MemoryClass mc2);
+VFEM_EXPORT void memoryPrintFlags (unsigned flags) noexcept;
 
 /// Class used by VFEM to manage memory allocations and deallocations across
 /// different memory types.
@@ -204,7 +202,13 @@ struct MemoryRecord final
   MemType d_mt{ MemType ::DEVICE };
   DeallocateFunc h_deallocate{};
   DeallocateFunc d_deallocate{};
+  bool owns_h{};
+  bool owns_d{};
   MemoryState state{ MemoryState::EMPTY };
+
+  MemoryRecord () = default;
+  MemoryRecord (const MemoryRecord &) = delete;
+  MemoryRecord &operator= (const MemoryRecord &) = delete;
   ~MemoryRecord () noexcept;
 };
 
@@ -212,29 +216,23 @@ template <DeviceCopyable T> class Memory
 {
 protected:
   friend class MemoryManager;
-  friend void memoryPrintFlags (unsigned flags);
+  friend void memoryPrintFlags (unsigned flags) noexcept;
 
   enum FlagMask : unsigned
   {
-
 #ifndef REGISTERED
     REGISTERED = 1 << 0,
 #endif
     Registered = 1 << 0,
-
     OWNS_HOST = 1 << 1,
     OWNS_DEVICE = 1 << 2,
-
     OWNS_INTERNAL
     = 1 << 3, // Owns memory allocated internally by VFEM (not user-provided)
-
     VALID_HOST = 1 << 4,
     VALID_DEVICE = 1 << 5,
-
     USE_DEVICE = 1 << 6, // Indicates that the device pointer should be used
                          // for operations (e.g., when memory is mirrored)
-
-    ALIAS = 1 << 7, // Pointer is an alias
+    ALIAS = 1 << 7,      // Pointer is an alias
   };
 
   /// Pointer to the memory. Not owned.
@@ -249,34 +247,11 @@ protected:
 public:
   // Default constructor initializes to an empty, invalid state
   constexpr Memory () noexcept { reset (); }
+  Memory &operator= (const Memory &) = default;
+  Memory (Memory &&other) noexcept;
+  Memory (const Memory &) = default;
 
-  [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
-
-  Memory &operator= (const Memory &)
-      = default;
-
-  Memory (Memory &&other) noexcept
-  {
-    *this = other;
-    other.reset ();
-  }
-
-  [[deprecated ("Use MakeAlias or explicit Copy to avoid multiple ownership")]]
-
-  Memory (const Memory &)
-      = default;
-
-  Memory &
-  operator= (Memory &&other) noexcept
-  {
-    if (this == &other)
-      {
-        return *this;
-      }
-    *this = other;
-    other.reset ();
-    return *this;
-  }
+  Memory &operator= (Memory &&other) noexcept;
 
   // Create a new memory allocation of the given size. If the memory is already
   // allocated, it will be deallocated and reallocated. The memory type is set
@@ -288,79 +263,25 @@ public:
   // memory is already allocated, it will be deallocated and reallocated.
 
   explicit Memory (MemType mt) { reset (mt); }
-
   Memory (int size, MemType mt) { allocate (size, mt); }
-
-  Memory (int size, MemType h_mt, MemType d_mt)
-  {
-    allocate (size, h_mt, d_mt);
-  }
-
-  explicit Memory (T *ptr, int size, MemType mt, bool own)
-  {
-    wrap (ptr, size, mt, own);
-  }
+  Memory (int size, MemType h_mt, MemType d_mt);
+  explicit Memory (T *ptr, int size, MemType mt, bool own);
 
   ~Memory () = default;
 
   // Note: The destructor is not marked noexcept because it may throw if the
   // destructor of T throws during deallocation.
 
-  void
-  swap (Memory &other) noexcept
-  {
-    using std::swap;
-    swap (h_ptr, other.h_ptr);
-    swap (d_ptr, other.d_ptr);
-    swap (capacity, other.capacity);
-    swap (h_mt, other.h_mt);
-    swap (d_mt, other.d_mt);
-    swap (flags, other.flags);
-  }
+  void swap (Memory &other) noexcept;
 
   // Reset memory to an empty state without releasing storage or changing
   // types.
-  constexpr void
-  reset () noexcept
-  {
-    h_ptr = nullptr;
-    d_ptr = nullptr;
-    capacity = 0;
-    flags = 0;
-  }
+  constexpr void reset () noexcept;
 
   // Reset memory to an empty state and configure its host/device memory types.
-  void
-  reset (MemType memory_type)
-  {
-    if (!isHostMemory (memory_type) && !isDeviceMemory (memory_type))
-      {
-        vfemError ("memory type is not a concrete backend type");
-        return;
-      }
-    reset ();
-    if (memory_type == MemType::MANAGED)
-      {
-        h_mt = MemType::MANAGED;
-        d_mt = MemType::MANAGED;
-      }
-    else if (isDeviceMemory (memory_type))
-      {
-        h_mt = MemType::HOST;
-        d_mt = memory_type;
-      }
-    else
-      {
-        h_mt = memory_type;
-        d_mt = MemType::DEVICE;
-      }
-  }
+  void reset (MemType memory_type);
 
-  bool
-  empty () const noexcept
-  {
-    return h_ptr == nullptr;
-  }
+  bool empty () const noexcept;
 
   inline void allocate (int size);
 
@@ -384,23 +305,16 @@ public:
 
   inline const T &operator[] (int index) const noexcept;
 
-  inline operator T *() noexcept;
-
-  inline operator const T *() const noexcept;
-
+  operator T *() noexcept;
+  operator const T *() const noexcept;
   template <typename U> inline explicit operator U *() noexcept;
-
   template <typename U> inline explicit operator const U *() const noexcept;
 
   void
   release () noexcept
   {
-    if ((flags & OWNS_HOST) && h_ptr)
-      {
-        delete[] h_ptr;
-      }
     reset ();
-  }
+  };
 
   void deleteDevice (bool copy_to_host = true);
 
@@ -414,31 +328,15 @@ public:
   // ownership flags. This is used by MemoryManager and other internal
   // components to ensure that memory operations
   bool hostIsValid () const noexcept;
-
   bool deviceIsValid () const noexcept;
-
-  bool
-  ownsHostPtr () const noexcept
-  {
-    return flags & OWNS_HOST;
-  };
-
-  void
-  setHostPtrOwner (bool own) noexcept
-  {
-    flags = own ? (flags | OWNS_HOST) : (flags & ~OWNS_HOST);
-  };
-
-  bool
-  ownsDevicePtr () const noexcept
-  {
-    return flags & OWNS_DEVICE;
-  };
+  bool ownsHostPtr () const noexcept;
+  void setHostPtrOwner (bool own) noexcept;
+  bool ownsDevicePtr () const noexcept;
 
   bool
   useDevice () const noexcept
   {
-    return flags & USE_DEVICE;
+    return (flags & USE_DEVICE) != 0U;
   };
 
   void
@@ -609,17 +507,23 @@ private:
 
   [[nodiscard]] BackendDeallocateFunc getDeallocate (MemType type) const;
 
-  void allocate (MemoryRecord &record, MemorySide side);
+  inline void allocate (MemoryRecord &record, MemorySide side);
+
   void *access (MemoryRecord &record, MemorySide side, AccessMode mode);
+
   void deleteDevice (MemoryRecord &record, bool copy_to_host);
+
   void copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
+
              std::size_t bytes);
 
   [[nodiscard]] static bool isConcreteType (MemType type) noexcept;
   [[nodiscard]] static std::size_t typeIndex (MemType type);
 
   std::array<Backend, MemTypeSize> backends_{};
+
   std::array<CopyFunc, MemTypeSize * MemTypeSize> copies_{};
+
   mutable std::mutex backend_mutex_;
 };
 
