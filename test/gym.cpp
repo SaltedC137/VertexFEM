@@ -1,6 +1,5 @@
 #include "utils/bench.hpp"
-#include <cmath>
-#include <cstdlib>
+
 
 int
 main ()
