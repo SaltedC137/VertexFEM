@@ -212,6 +212,8 @@ struct MemoryRecord final
   ~MemoryRecord () noexcept;
 };
 
+class MemoryManager;
+
 template <DeviceCopyable T> class Memory
 {
 protected:
@@ -237,8 +239,8 @@ protected:
 
   /// Pointer to the memory. Not owned.
 
-  T *h_ptr{};
-  T *d_ptr{};
+  mutable T *h_ptr{};
+  mutable T *d_ptr{};
   int capacity{};
   MemType h_mt{ MemType::HOST };
   MemType d_mt{ MemType::DEVICE };
@@ -246,12 +248,13 @@ protected:
 
 public:
   // Default constructor initializes to an empty, invalid state
-  constexpr Memory () noexcept { reset (); }
-  Memory &operator= (const Memory &) = default;
-  Memory (Memory &&other) noexcept;
-  Memory (const Memory &) = default;
+  Memory () noexcept = default;
 
+  Memory (Memory &&other) noexcept;
   Memory &operator= (Memory &&other) noexcept;
+
+  Memory (const Memory &other) noexcept;
+  Memory &operator= (const Memory &other) noexcept;
 
   // Create a new memory allocation of the given size. If the memory is already
   // allocated, it will be deallocated and reallocated. The memory type is set
@@ -262,7 +265,8 @@ public:
   // Create a new memory allocation of the given size and memory type. If the
   // memory is already allocated, it will be deallocated and reallocated.
 
-  explicit Memory (MemType mt) { reset (mt); }
+  explicit Memory (MemType mt) { configureTypes (mt); }
+
   Memory (int size, MemType mt) { allocate (size, mt); }
   Memory (int size, MemType h_mt, MemType d_mt);
   explicit Memory (T *ptr, int size, MemType mt, bool own);
@@ -502,6 +506,52 @@ private:
   mutable std::mutex backend_mutex_;
 };
 
+//============================================================================
+
+template <DeviceCopyable T>
+Memory<T>::Memory (const Memory &other) noexcept
+    : h_ptr (other.h_ptr), d_ptr (other.d_ptr), capacity (other.capacity),
+      h_mt (other.h_mt), d_mt (other.d_mt),
+      flags ((other.flags & USE_DEVICE) | ALIAS), record_ (other.record_),
+      byte_offset_ (other.byte_offset_)
+{
+  refreshView ();
+}
+
+template <DeviceCopyable T>
+Memory<T> &
+Memory<T>::operator= (const Memory &other) noexcept
+{
+  if (this == &other)
+    {
+      return *this;
+    }
+  record_ = other.record_;
+  byte_offset_ = other.byte_offset_;
+  capacity = other.capacity;
+  h_mt = other.h_mt;
+  d_mt = other.d_mt;
+  flags = (other.flags & USE_DEVICE) | ALIAS;
+  refreshView ();
+  return *this;
+}
+
+template <DeviceCopyable T> Memory<T>::Memory (Memory &&other) noexcept
+{
+  moveFrom (std::move (other));
+}
+
+template <DeviceCopyable T>
+Memory<T> &
+Memory<T>::operator= (Memory &&other) noexcept
+{
+  if (this != &other)
+    {
+      reset ();
+      moveFrom (std::move (other));
+    }
+  return *this;
+}
 
 
 
