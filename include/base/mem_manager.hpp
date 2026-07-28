@@ -1,11 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
 #include "config.hpp"
-#include "error.hpp"
 
 #include <array>
 #include <cstddef>
@@ -396,61 +396,27 @@ public:
 
   inline void printFlags () const;
 
-  inline int compareHostAndDevice (int size) const;
+  [[nodiscard]] inline int compareHostAndDevice (int size) const;
 
 private:
-  static constexpr std::size_t
-  defAlignBytes ()
-  {
-    using namespace std;
-    return alignof (max_align_t);
-  }
+  std::shared_ptr<MemoryRecord> record_;
+  std::size_t byte_offset_{};
 
-  static constexpr std::size_t def_align_bytes = defAlignBytes ();
+  [[nodiscard]] static bool isPlainHostType (MemType type) noexcept;
+  [[nodiscard]] static bool hasRequiredAlignment (const void *ptr,
+                                                  MemType type) noexcept;
+  static void deleteWrappedHost (void *ptr, std::size_t alignment) noexcept;
 
-  static constexpr std::size_t new_align_bytes
-      = alignof (T) > def_align_bytes ? alignof (T) : def_align_bytes;
+  [[nodiscard]] inline static std::size_t checkedBytes (int size);
+  [[nodiscard]] inline bool validAccessSize (int size) const;
+  [[nodiscard]] inline MemorySide sideFor (MemoryClass mc) const;
+  [[nodiscard]] inline MemType typeFor (MemorySide side) const noexcept;
+  [[nodiscard]] inline T *viewPointer (void *base) const noexcept;
+  [[nodiscard]] inline const T *viewPointer (const void *base) const noexcept;
 
-  template <std::size_t align_bytes, bool dummy = true> struct Alloc
-  {
-    static T *
-    New (std::size_t size)
-    {
-      return new T[size];
-    }
-    static void
-    Delete (T *ptr)
-    {
-      delete[] ptr;
-    }
-  };
-
-  // Specialization for aligned allocation using C++17's aligned new/delete
-
-  static T *
-  newHost (std::size_t size)
-  {
-    return Alloc<new_align_bytes>::New (size);
-  }
-  static void
-  deleteHost (T *ptr)
-  {
-    Alloc<new_align_bytes>::Delete (ptr);
-  }
-
-  template <MemType mt, bool dummy = true> struct AllocMem
-  {
-    static T *
-    New (std::size_t size)
-    {
-      return Alloc<new_align_bytes>::New (size);
-    }
-    static void
-    Delete (T *ptr)
-    {
-      Alloc<new_align_bytes>::Delete (ptr);
-    }
-  };
+  void refreshView () const noexcept;
+  void configureTypes (MemType memory_type);
+  void moveFrom (Memory &&other) noexcept;
 
 #if defined(VFEM_USE_CUDA) || defined(VFEM_USE_HIP)
 
@@ -504,7 +470,7 @@ public:
   };
 
   /// Configure backends before any Memory object starts using the type.
-  static MemoryManager &get () noexcept;
+  static MemoryManager &get ();
 
   void registerBackend (MemType type, Backend backend);
   void registerCopy (MemType dst, MemType src, CopyFunc copy);
@@ -516,27 +482,28 @@ private:
 
   MemoryManager ();
 
-  [[nodiscard]] BackendDeallocateFunc getDeallocate (MemType type) const;
+  [[nodiscard]] BackendDeallocateFunc
+  getDeallocate (MemType type) const noexcept;
 
-  inline void allocate (MemoryRecord &record, MemorySide side);
-
+  void allocate (MemoryRecord &record, MemorySide side);
   void *access (MemoryRecord &record, MemorySide side, AccessMode mode);
-
   void deleteDevice (MemoryRecord &record, bool copy_to_host);
-
   void copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
-
              std::size_t bytes);
 
   [[nodiscard]] static bool isConcreteType (MemType type) noexcept;
   [[nodiscard]] static std::size_t typeIndex (MemType type);
+  [[nodiscard]] static std::size_t
+  requiredAlignment (MemType host_mt, MemType device_mt,
+                     std::size_t type_alignment) noexcept;
 
   std::array<Backend, MemTypeSize> backends_{};
-
   std::array<CopyFunc, MemTypeSize * MemTypeSize> copies_{};
-
   mutable std::mutex backend_mutex_;
 };
+
+
+
 
 } // namespace vfem
 
