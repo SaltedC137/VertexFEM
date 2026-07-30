@@ -2,10 +2,12 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
 #include "config.hpp"
+#include "error.hpp"
 
 #include <array>
 #include <cstddef>
@@ -267,8 +269,9 @@ public:
 
   explicit Memory (MemType mt) { configureTypes (mt); }
 
-  Memory (int size, MemType mt) { allocate (size, mt); }
+  Memory (int size, MemType mt);
   Memory (int size, MemType h_mt, MemType d_mt);
+
   explicit Memory (T *ptr, int size, MemType mt, bool own);
 
   ~Memory () = default;
@@ -553,7 +556,92 @@ Memory<T>::operator= (Memory &&other) noexcept
   return *this;
 }
 
+template <DeviceCopyable T> Memory<T>::Memory (int size, MemType mt)
+{
+  allocate (size, mt);
+}
 
+template <DeviceCopyable T>
+Memory<T>::Memory (int size, MemType h_mt, MemType d_mt)
+{
+  allocate (size, h_mt, d_mt);
+}
+
+template <DeviceCopyable T>
+Memory<T>::Memory (T *ptr, int size, MemType mt, bool own)
+{
+  wrap (ptr, size, mt, own);
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::swap (Memory &other) noexcept
+{
+  using std::swap;
+  swap (h_ptr, other.h_ptr);
+  swap (d_ptr, other.d_ptr);
+  swap (capacity, other.capacity);
+  swap (h_mt, other.h_mt);
+  swap (d_mt, other.d_mt);
+  swap (flags, other.flags);
+  swap (record_, other.record_);
+  swap (byte_offset_, other.byte_offset_);
+}
+
+template <DeviceCopyable T>
+constexpr void
+Memory<T>::reset () noexcept
+{
+  record_.reset ();
+  h_ptr = nullptr;
+  d_ptr = nullptr;
+  capacity = 0;
+  byte_offset_ = 0;
+  flags = 0;
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::reset (MemType memory_type)
+{
+  reset ();
+  configureTypes (memory_type);
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::configureTypes (MemType memory_type)
+{
+  if (memory_type == MemType::PRESERVE)
+    {
+      return;
+    }
+  if (memory_type == MemType::DEFAULT)
+    {
+      memory_type = MemType::HOST;
+    }
+  if (!isHostMemory (memory_type) && !isDeviceMemory (memory_type))
+    {
+      vfemError ("memory type is not a concrete backend type");
+      return;
+    }
+
+  if (memory_type == MemType::MANAGED)
+    {
+      h_mt = MemType::MANAGED;
+      d_mt = MemType::MANAGED;
+    }
+  else if (isDeviceMemory (memory_type))
+    {
+      h_mt = MemType::HOST;
+      d_mt = memory_type;
+    }
+  else
+    {
+      h_mt = memory_type;
+      d_mt = MemType::DEVICE;
+    }
+}
 
 } // namespace vfem
 

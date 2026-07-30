@@ -17,7 +17,7 @@ MemoryRecord::~MemoryRecord () noexcept
       if (h_ptr != nullptr && deallocate != nullptr)
         {
           deallocate (h_ptr, alignment);
-        }
+        
       return;
     }
 
