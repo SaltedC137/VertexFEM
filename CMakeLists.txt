@@ -44,7 +44,7 @@ file(GLOB VERTEXFEM_SOURCES
 add_library(vertexfem ${VERTEXFEM_SOURCES})
 
 include(GNUInstallDirs)
-(vertexfem
+target_include_directories(vertexfem
   PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/config>
