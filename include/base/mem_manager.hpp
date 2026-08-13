@@ -11,7 +11,9 @@
 
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <mutex>
+#include <new>
 #include <type_traits>
 
 #ifdef VFEM_USE_MPI
@@ -308,10 +310,10 @@ public:
 
   inline const T &operator[] (int index) const noexcept;
 
-  operator T *() noexcept;
-  operator const T *() const noexcept;
-  template <typename U> inline explicit operator U *() noexcept;
-  template <typename U> inline explicit operator const U *() const noexcept;
+  operator T * () noexcept;
+  operator const T * () const noexcept;
+  template <typename U> inline explicit operator U * () noexcept;
+  template <typename U> inline explicit operator const U * () const noexcept;
 
   void
   release () noexcept
@@ -513,9 +515,13 @@ private:
 
 template <DeviceCopyable T>
 Memory<T>::Memory (const Memory &other) noexcept
-    : h_ptr (other.h_ptr), d_ptr (other.d_ptr), capacity (other.capacity),
-      h_mt (other.h_mt), d_mt (other.d_mt),
-      flags ((other.flags & USE_DEVICE) | ALIAS), record_ (other.record_),
+    : h_ptr (other.h_ptr),
+      d_ptr (other.d_ptr),
+      capacity (other.capacity),
+      h_mt (other.h_mt),
+      d_mt (other.d_mt),
+      flags ((other.flags & USE_DEVICE) | ALIAS),
+      record_ (other.record_),
       byte_offset_ (other.byte_offset_)
 {
   refreshView ();
@@ -641,6 +647,120 @@ Memory<T>::configureTypes (MemType memory_type)
       h_mt = memory_type;
       d_mt = MemType::DEVICE;
     }
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::deleteWrappedHost (void *ptr, std::size_t alignment) noexcept
+{
+  if (ptr != nullptr)
+    {
+      ::operator delete (ptr, std::align_val_t{ alignment });
+    }
+}
+
+template <DeviceCopyable T>
+std::size_t
+Memory<T>::checkedBytes (int size)
+{
+  if (size < 0)
+    {
+      vfemError ("memory size must be non-negative");
+      return 0;
+    }
+
+  const auto count = static_cast<std::size_t> (size);
+  if (count > std::numeric_limits<std::size_t>::max () / sizeof (T))
+    {
+      vfemError ("memory allocation size overflow");
+      return 0;
+    }
+
+  return count * sizeof (T);
+}
+
+template <DeviceCopyable T>
+bool
+Memory<T>::empty () const noexcept
+{
+  return record_ == nullptr || capacity == 0;
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::allocate (int size)
+{
+  allocate (size, h_mt, d_mt);
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::allocate (int size, MemType mt)
+{
+  configureTypes (mt);
+  allocate (size, h_mt, d_mt);
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
+{
+  if (!isHostMemory (host_mt))
+    {
+      vfemError ("host memory type is not host-accessible");
+      return;
+    }
+  if (!isDeviceMemory (device_mt))
+    {
+      vfemError ("device memory type is not device-accessible");
+      return;
+    }
+  if (size == 0)
+    {
+      reset ();
+      h_mt = host_mt;
+      d_mt = device_mt;
+      return;
+    }
+  const std::size_t bytes = checkedBytes (size);
+  if (bytes == 0)
+    {
+      reset ();
+      h_mt = host_mt;
+      d_mt = device_mt;
+      return;
+    }
+  constexpr std::size_t alignment = alignof (T) > alignof (std::max_align_t)
+                                        ? alignof (T)
+                                        : alignof (std::max_align_t);
+  void *ptr = ::operator new (bytes, std::align_val_t{ alignment });
+  auto record = std::make_shared<MemoryRecord> ();
+
+  record->h_ptr = ptr;
+  record->bytes = bytes;
+  record->alignment = alignment;
+  record->h_mt = host_mt;
+  record->d_mt = device_mt;
+  record->h_deallocate = &Memory<T>::deleteWrappedHost;
+  record->owns_h = true;
+  record->state = MemoryState::UNINITIALIZED;
+  unsigned new_flags = Registered | OWNS_HOST | OWNS_INTERNAL;
+  if (host_mt == MemType::MANAGED && device_mt == MemType::MANAGED)
+    {
+      record->d_ptr = ptr;
+      record->d_deallocate = &Memory<T>::deleteWrappedHost;
+      record->owns_d = true;
+      new_flags |= OWNS_DEVICE;
+    }
+  reset ();
+  record_ = std::move (record);
+  byte_offset_ = 0;
+  capacity = size;
+  h_mt = host_mt;
+  d_mt = device_mt;
+  flags = new_flags;
+  h_ptr = static_cast<T *> (record_->h_ptr);
+  d_ptr = static_cast<T *> (record_->d_ptr);
 }
 
 } // namespace vfem

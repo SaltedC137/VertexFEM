@@ -4,7 +4,9 @@
 #define VFEM_ERROR_HPP
 
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
+#include <iomanip>
 
 #include <source_location>
 #include <sstream>
@@ -118,7 +120,7 @@ vfemWarning (std::string_view message = {},
   while (false)
 
 #define VFEM_ABORT(msg)                                                       \
-  VFEM_DETAIL_MESSAGE ("VFEM abort: ", msg, ::vfem::vfem_error)
+  VFEM_DETAIL_MESSAGE ("VFEM abort: ", msg, ::vfem::vfemError)
 
 #define VFEM_VERIFY(expr, msg)                                                \
   do                                                                          \
@@ -127,7 +129,7 @@ vfemWarning (std::string_view message = {},
         {                                                                     \
           VFEM_DETAIL_MESSAGE ("Verification failed: (" #expr                 \
                                ") is false:\n --> ",                          \
-                               msg, ::vfem::vfem_error);                      \
+                               msg, ::vfem::vfemError);                       \
         }                                                                     \
     }                                                                         \
   while (false)
@@ -142,7 +144,7 @@ vfemWarning (std::string_view message = {},
         {                                                                     \
           VFEM_DETAIL_MESSAGE ("Assertion failed: (" #expr                    \
                                ") is false:\n --> ",                          \
-                               msg, ::vfem::vfem_error);                      \
+                               msg, ::vfem::vfemError);                       \
         }                                                                     \
     }                                                                         \
   while (false)
@@ -161,7 +163,7 @@ vfemWarning (std::string_view message = {},
 #endif
 
 #define VFEM_WARNING(msg)                                                     \
-  VFEM_DETAIL_MESSAGE ("VFEM warning: ", msg, ::vfem::vfem_warning)
+  VFEM_DETAIL_MESSAGE ("VFEM warning: ", msg, ::vfem::vfemWarning)
 
 #define VFEM_ASSERT_INDEX_IN_RANGE(index, begin, end)                         \
   VFEM_ASSERT ((begin) <= (index) && (index) < (end),                         \
