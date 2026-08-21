@@ -294,7 +294,7 @@ public:
 
   inline void allocate (int size);
   inline void allocate (int size, MemType mt);
-  inline void allocate (int size, MemType h_mt, MemType d_mt);
+  inline void allocate (int size, MemType host_mt, MemType device_mt);
 
   // Wrap the memory around an existing pointer. The memory will not be owned
   // by this object, and will not be deallocated when the object is destroyed.
@@ -310,10 +310,10 @@ public:
 
   inline const T &operator[] (int index) const noexcept;
 
-  operator T * () noexcept;
-  operator const T * () const noexcept;
-  template <typename U> inline explicit operator U * () noexcept;
-  template <typename U> inline explicit operator const U * () const noexcept;
+  operator T *() noexcept;
+  operator const T *() const noexcept;
+  template <typename U> inline explicit operator U *() noexcept;
+  template <typename U> inline explicit operator const U *() const noexcept;
 
   void
   release () noexcept
@@ -515,13 +515,9 @@ private:
 
 template <DeviceCopyable T>
 Memory<T>::Memory (const Memory &other) noexcept
-    : h_ptr (other.h_ptr),
-      d_ptr (other.d_ptr),
-      capacity (other.capacity),
-      h_mt (other.h_mt),
-      d_mt (other.d_mt),
-      flags ((other.flags & USE_DEVICE) | ALIAS),
-      record_ (other.record_),
+    : h_ptr (other.h_ptr), d_ptr (other.d_ptr), capacity (other.capacity),
+      h_mt (other.h_mt), d_mt (other.d_mt),
+      flags ((other.flags & USE_DEVICE) | ALIAS), record_ (other.record_),
       byte_offset_ (other.byte_offset_)
 {
   refreshView ();
@@ -761,6 +757,110 @@ Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
   flags = new_flags;
   h_ptr = static_cast<T *> (record_->h_ptr);
   d_ptr = static_cast<T *> (record_->d_ptr);
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
+                 MemType device_mt, bool own, bool valid_host,
+                 bool valid_device)
+{
+  const std::size_t bytes = checkedBytes (size);
+  if (size < 0)
+    {
+      return;
+    }
+  if (!isHostMemory (host_mt) || !isDeviceMemory (device_mt))
+    {
+      vfemError ("invalid host/device memory type pair");
+      return;
+    }
+  if ((host_mt == MemType::MANAGED) != (device_mt == MemType::MANAGED))
+    {
+      vfemError ("MANAGED memory must be used on both sides");
+      return;
+    }
+  if (host_mt == MemType::MANAGED && host_ptr != device_ptr)
+    {
+      vfemError ("managed host/device pointers must be identical");
+      return;
+    }
+  if (size > 0 && host_ptr == nullptr && device_ptr == nullptr)
+    {
+      vfemError ("at least one wrapped pointer must be non-null");
+      return;
+    }
+  if (valid_host && host_ptr == nullptr)
+    {
+      vfemError ("host pointer is marked valid but is null");
+      return;
+    }
+  if (valid_device && device_ptr == nullptr)
+    {
+      vfemError ("device pointer is marked valid but is null");
+      return;
+    }
+  if (!hasRequiredAlignment (host_ptr, host_mt)
+      || !hasRequiredAlignment (device_ptr, device_mt))
+    {
+      vfemError ("wrapped pointer does not satisfy memory type alignment");
+      return;
+    }
+
+  Memory replacement;
+  replacement.h_mt = host_mt;
+  replacement.d_mt = device_mt;
+  if (size == 0)
+    {
+      swap (replacement);
+      return;
+    }
+
+  auto record = std::make_shared<MemoryRecord> ();
+  record->h_ptr = host_ptr;
+  record->d_ptr = device_ptr;
+  record->bytes = bytes;
+  record->h_mt = host_mt;
+  record->d_mt = device_mt;
+  record->alignment
+      = MemoryManager::requiredAlignment (host_mt, device_mt, alignof (T));
+
+  record->h_deallocate = isPlainHostType (host_mt)
+                             ? &Memory<T>::deleteWrappedHost
+                             : MemoryManager::get ().getDeallocate (host_mt);
+  record->d_deallocate = MemoryManager::get ().getDeallocate (device_mt);
+  record->owns_h = own && host_ptr != nullptr;
+  record->owns_d = own && device_ptr != nullptr && device_ptr != host_ptr;
+
+  if (own
+      && ((record->owns_h && record->h_deallocate == nullptr)
+          || (record->owns_d && record->d_deallocate == nullptr)))
+    {
+      vfemError ("no deallocator is registered for owned wrapped memory");
+      return;
+    }
+
+  if (valid_host && valid_device)
+    {
+      record->state = MemoryState::SYNCHRONIZED;
+    }
+  else if (valid_host)
+    {
+      record->state = MemoryState::HOST_VALID;
+    }
+  else if (valid_device)
+    {
+      record->state = MemoryState::DEVICE_VALID;
+    }
+  else
+    {
+      record->state = MemoryState::UNINITIALIZED;
+    }
+
+  replacement.record_ = std::move (record);
+  replacement.capacity = size;
+  replacement.refreshView ();
+  swap (replacement);
 }
 
 } // namespace vfem
