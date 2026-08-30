@@ -301,8 +301,8 @@ public:
   // The memory type is set to the default host memory type (HOST).
 
   inline void wrap (T *ptr, int size, MemType mt, bool own);
-  inline void wrap (T *h_ptr, T *d_ptr, int size, MemType h_mt, MemType d_mt,
-                    bool own, bool vaild_host = false,
+  inline void wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
+                    MemType device_mt, bool own, bool valid_host = false,
                     bool valid_device = true);
   inline void makeAlias (const Memory &base, int offset, int size);
 
@@ -510,6 +510,44 @@ private:
   std::array<CopyFunc, MemTypeSize * MemTypeSize> copies_{};
   mutable std::mutex backend_mutex_;
 };
+
+//============================================================================
+
+template <DeviceCopyable T>
+void
+Memory<T>::refreshView () const noexcept
+{
+  // Guard each side independently: a record may legally hold only one side
+  // (e.g. a device-only wrap), and pointer arithmetic on a null pointer is UB
+  // even with a zero offset.
+
+  h_ptr = record_ && record_->h_ptr
+              ? static_cast<T *> (record_->h_ptr) + byte_offset_ / sizeof (T)
+              : nullptr;
+  d_ptr = record_ && record_->d_ptr
+              ? static_cast<T *> (record_->d_ptr) + byte_offset_ / sizeof (T)
+              : nullptr;
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::moveFrom (Memory &&other) noexcept
+{
+  h_ptr = other.h_ptr;
+  d_ptr = other.d_ptr;
+  capacity = other.capacity;
+  h_mt = other.h_mt;
+  d_mt = other.d_mt;
+  flags = other.flags;
+  record_ = std::move (other.record_);
+  byte_offset_ = other.byte_offset_;
+
+  other.h_ptr = nullptr;
+  other.d_ptr = nullptr;
+  other.capacity = 0;
+  other.byte_offset_ = 0;
+  other.flags = 0;
+}
 
 //============================================================================
 
@@ -828,6 +866,7 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
   record->h_deallocate = isPlainHostType (host_mt)
                              ? &Memory<T>::deleteWrappedHost
                              : MemoryManager::get ().getDeallocate (host_mt);
+
   record->d_deallocate = MemoryManager::get ().getDeallocate (device_mt);
   record->owns_h = own && host_ptr != nullptr;
   record->owns_d = own && device_ptr != nullptr && device_ptr != host_ptr;
@@ -859,6 +898,35 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
 
   replacement.record_ = std::move (record);
   replacement.capacity = size;
+  replacement.refreshView ();
+  swap (replacement);
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::makeAlias (const Memory &base, int offset, int size)
+{
+
+  if (offset < 0 || size < 0 || offset > base.capacity
+      || size > base.capacity - offset)
+    {
+      vfemError ("alias range is outside the base allocation");
+      return;
+    }
+  if (size > 0 && !base.record_)
+    {
+      vfemError ("cannot alias empty memory");
+      return;
+    }
+
+  Memory replacement;
+  replacement.record_ = base.record_;
+  replacement.byte_offset_
+      = base.byte_offset_ + static_cast<std::size_t> (offset) * sizeof (T);
+  replacement.capacity = size;
+  replacement.h_mt = base.h_mt;
+  replacement.d_mt = base.d_mt;
+  replacement.flags = (base.flags & USE_DEVICE) | ALIAS;
   replacement.refreshView ();
   swap (replacement);
 }
