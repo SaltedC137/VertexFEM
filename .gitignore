@@ -1,4 +1,5 @@
-
+# emacs org notation files
+*.org
 
 # package files
 package-lock.json

@@ -1,4 +1,12 @@
-# VertexFEM
+              __  __                 __                   ____    ____                
+             /\ \/\ \               /\ \__               /\  _`\ /\  _`\   /'\_/`\    
+             \ \ \ \ \     __   _ __\ \ ,_\    __   __  _\ \ \L\_\ \ \L\_\/\      \   
+              \ \ \ \ \  /'__`\/\`'__\ \ \/  /'__`\/\ \/'\\ \  _\/\ \  _\L\ \ \__\ \  
+               \ \ \_/ \/\  __/\ \ \/ \ \ \_/\  __/\/>  </ \ \ \/  \ \ \L\ \ \ \_/\ \ 
+                \ `\___/\ \____\\ \_\  \ \__\ \____\/\_/\_\ \ \_\   \ \____/\ \_\\ \_\
+                 `\/__/  \/____/ \/_/   \/__/\/____/\//\/_/  \/_/    \/___/  \/_/ \/_/
+                                                                                      
+                                                                                      
 
 > 🚧 **Under construction** — Architecture design phase, core modules not yet implemented. Infrastructure (error handling, memory manager, benchmarking) is complete.
 
