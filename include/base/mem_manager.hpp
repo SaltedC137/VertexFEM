@@ -1135,7 +1135,7 @@ MemoryManager::registerBackend (MemType type, Backend backend)
 inline void
 MemoryManager::registerCopy (MemType dst, MemType src, CopyFunc copy)
 {
-  if (!isConcreteType (dst) || isConcreteType (src) || copy == nullptr)
+  if (!isConcreteType (dst) || !isConcreteType (src) || copy == nullptr)
     {
       vfemError ("invalid memory types or copy function");
       return;
