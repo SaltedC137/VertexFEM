@@ -1,0 +1,17 @@
+name: "checks"
+
+permissions:
+  actions: write
+  pull-requests: read
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # TODO

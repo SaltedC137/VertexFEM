@@ -840,7 +840,6 @@ Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
   d_ptr = static_cast<T *> (record_->d_ptr);
 }
 
-
 template <DeviceCopyable T>
 void
 Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
@@ -1058,6 +1057,17 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
       record->state = MemoryState::UNINITIALIZED;
     }
 
+  unsigned new_flags = Registered;
+  if (record->owns_h)
+    {
+      new_flags |= OWNS_HOST;
+    }
+  if (record->owns_d)
+    {
+      new_flags |= OWNS_DEVICE;
+    }
+
+  replacement.flags = new_flags;
   replacement.record_ = std::move (record);
   replacement.capacity = size;
   replacement.refreshView ();
@@ -1093,6 +1103,110 @@ Memory<T>::makeAlias (const Memory &base, int offset, int size)
   swap (replacement);
 }
 
-} // namespace vfem
+//============================================================================
+// MemoryManager
 
+inline MemoryManager &
+MemoryManager::get ()
+{
+  static MemoryManager instance;
+  return instance;
+}
+
+inline MemoryManager::MemoryManager () = default;
+
+inline void
+MemoryManager::registerBackend (MemType type, Backend backend)
+{
+  if (!isConcreteType (type))
+    {
+      vfemError ("memory type is not a concrete backend type");
+      return;
+    }
+  if ((backend.allocate == nullptr) != (backend.deallocate == nullptr))
+    {
+      vfemError ("backend must provide both allocate and deallocate ");
+      return;
+    }
+  std::lock_guard<std::mutex> lock (backend_mutex_);
+  backends_[typeIndex (type)] = backend;
+}
+
+inline void
+MemoryManager::registerCopy (MemType dst, MemType src, CopyFunc copy)
+{
+  if (!isConcreteType (dst) || isConcreteType (src) || copy == nullptr)
+    {
+      vfemError ("invalid memory types or copy function");
+      return;
+    }
+  std::lock_guard<std::mutex> lock (backend_mutex_);
+  copies_[typeIndex (dst) * MemTypeSize + typeIndex (src)] = copy;
+}
+
+inline bool
+MemoryManager::supports (MemType type) const noexcept
+{
+  std::lock_guard<std::mutex> lock (backend_mutex_);
+  const std::size_t index = typeIndex (type);
+  if (index >= backends_.size ())
+    {
+      return false;
+    }
+  return backends_[index].allocate != nullptr
+         && backends_[index].deallocate != nullptr;
+}
+
+inline DeallocateFunc
+MemoryManager::getDeallocate (MemType type) const noexcept
+{
+  std::lock_guard<std::mutex> lock (backend_mutex_);
+  const std::size_t index = typeIndex (type);
+  if (index >= backends_.size ())
+    {
+      return nullptr;
+    }
+  return backends_[index].deallocate;
+}
+
+inline std::size_t
+MemoryManager::typeIndex (MemType type)
+{
+  const auto index = static_cast<std::size_t> (type);
+  return index < static_cast<std::size_t> (MemTypeSize) ? index : MemTypeSize;
+}
+
+inline bool
+MemoryManager::isConcreteType (MemType type) noexcept
+{
+  return isHostMemory (type) || isDeviceMemory (type);
+}
+
+inline std::size_t
+MemoryManager::requiredAlignment (MemType host_mt, MemType device_mt,
+                                  std::size_t type_alignment) noexcept
+{
+  std::size_t required = std::max (type_alignment, alignof (std::max_align_t));
+  for (const MemType mt : { host_mt, device_mt })
+    {
+      switch (mt)
+        {
+        case MemType::MANAGED:
+        case MemType::DEVICE:
+        case MemType::DEVICE_DEBUG:
+        case MemType::DEVICE_UMPIRE:
+        case MemType::DEVICE_UMPIRE_2:
+          required = std::max (required, std::size_t{ 256 });
+          break;
+        case MemType::HOST_PINNED:
+          required = std::max (required, std::size_t{ 64 });
+          break;
+        default:
+          break;
+        }
+    }
+  return required;
+}
+
+} // namespace vfem
 #endif
