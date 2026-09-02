@@ -82,7 +82,7 @@ add_subdirectory(config)
 target_sources(vertexfem PRIVATE ${VFEM_CONFIG_HEADERS})
 
 if(VERTEXFEM_BUILD_TESTS)
-  add_subdirectory(test)
+  add_subdirectory(tests)
 endif()
 
 # Installation

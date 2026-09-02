@@ -50,6 +50,22 @@ enum class MemType
             // HOST or MANAGED depending on the context)
 };
 
+inline std::ostream &
+operator<< (std::ostream &os, MemType type)
+{
+  constexpr const char *names[]
+      = { "HOST",         "HOST_32",       "HOST_64",         "HOST_DEBUG",
+          "HOST_UMPIRE",  "HOST_PINNED",   "MANAGED",         "DEVICE",
+          "DEVICE_DEBUG", "DEVICE_UMPIRE", "DEVICE_UMPIRE_2", "SIZE",
+          "PRESERVE",     "DEFAULT" };
+  const auto index = static_cast<std::size_t> (type);
+  if (index < std::size (names))
+    {
+      return os << names[index];
+    }
+  return os << "Unknown(" << index << ")";
+}
+
 /// Static casts to 'int' and constexprs for MemType values
 constexpr int MemTypeSize = static_cast<int> (MemType::SIZE);
 constexpr int HostMemType = static_cast<int> (MemType::HOST);
