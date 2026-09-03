@@ -1,2 +1,2 @@
-add_executable(mm_test mm_test.cpp)
-target_link_libraries(mm_test vertexfem)
+add_executable(mem_manager_test mem_manager_test.cpp)
+target_link_libraries(mem_manager_test vertexfem)

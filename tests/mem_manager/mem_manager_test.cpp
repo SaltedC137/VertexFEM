@@ -278,5 +278,6 @@ main ()
   testAliasFromOffset ();
   testRepeatedAllocation ();
   testMemoryTypes ();
+  std::cout << "All memory manager tests passed successfully." << '\n';
   return 0;
 }
