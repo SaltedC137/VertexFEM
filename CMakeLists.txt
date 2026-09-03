@@ -30,7 +30,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
   endif()
 endif()
 
-file(GLOB VERTEXFEM_SOURCES
+file(GLOB VERTEXFEM_SOURCES CONFIGURE_DEPENDS
   src/asm/*.cpp
   src/base/*.cpp
   src/fem/*.cpp
@@ -78,12 +78,24 @@ else()
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_SINGLE)
 endif()
 
+
+option(ENABLE_ASAN "Enable AddressSanitizer" ON)
+
+if(ENABLE_ASAN)
+    if(MSVC)
+    # CHECK MSVC
+        add_compile_options(/fsanitize=address /Zi /RTC-)
+        add_link_options(/fsanitize=address)
+    else()
+    # CHECK GCC/CLANG
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address)
+    endif()
+endif()
+
+
 add_subdirectory(config)
 target_sources(vertexfem PRIVATE ${VFEM_CONFIG_HEADERS})
-
-if(VERTEXFEM_BUILD_TESTS)
-  add_subdirectory(tests)
-endif()
 
 # Installation
 install(TARGETS vertexfem
@@ -97,3 +109,16 @@ install(EXPORT vertexfem-targets
   NAMESPACE vertexfem::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vertexfem
 )
+
+
+# Ctest configuration
+
+set(ASAN_ENV "ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:symbolize=1")
+
+option(BUILD_TESTS "Build tests" ON)
+
+if(BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
+

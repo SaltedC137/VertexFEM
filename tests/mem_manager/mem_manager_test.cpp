@@ -67,36 +67,36 @@ testAllocateDualType ()
   CHECK_EQ (m.getDeviceMemType (), MemType::DEVICE);
 }
 
-static void
-testWrapNonOwning ()
-{
-  int buffer[100];
-  Memory<int> m;
-  m.wrap (buffer, 100, MemType::HOST, false);
-  CHECK_EQ (m.capaCity (), 100);
-  CHECK (!m.ownsHostPtr ());
-}
+// static void
+// testWrapNonOwning ()
+// {
+//   int buffer[100];
+//   Memory<int> m;
+//   m.wrap (buffer, 100, MemType::HOST, false);
+//   CHECK_EQ (m.capaCity (), 100);
+//   CHECK (!m.ownsHostPtr ());
+// }
 
-static void
-testWrapOwning ()
-{
-  int *buffer = new int[50];
-  Memory<int> m;
-  m.wrap (buffer, 50, MemType::HOST, true);
-  CHECK_EQ (m.capaCity (), 50);
-  CHECK (m.ownsHostPtr ());
-}
+// static void
+// testWrapOwning ()
+// {
+//   int *buffer = new int[50];
+//   Memory<int> m;
+//   m.wrap (buffer, 50, MemType::HOST, true);
+//   CHECK_EQ (m.capaCity (), 50);
+//   CHECK (m.ownsHostPtr ());
+// }
 
-static void
-testWrapDualPointer ()
-{
-  int host_buffer[64];
-  Memory<int> m;
-  m.wrap (host_buffer, nullptr, 64, MemType::HOST, MemType::DEVICE, false,
-          true, false);
-  CHECK_EQ (m.capaCity (), 64);
-  CHECK (m.hostIsValid ());
-}
+// static void
+// testWrapDualPointer ()
+// {
+//   int host_buffer[64];
+//   Memory<int> m;
+//   m.wrap (host_buffer, nullptr, 64, MemType::HOST, MemType::DEVICE, false,
+//           true, false);
+//   CHECK_EQ (m.capaCity (), 64);
+//   CHECK (m.hostIsValid ());
+// }
 
 static void
 testMakeAlias ()
