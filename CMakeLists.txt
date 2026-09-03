@@ -16,7 +16,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 file(MAKE_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
 option(VERTEXFEM_USE_DOUBLE "Use double precision" ON)
-option(VERTEXFEM_BUILD_TESTS "Build test programs" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -111,13 +110,13 @@ install(EXPORT vertexfem-targets
 )
 
 
-# Ctest configuration
+# CTest configuration
+# Standard CMake switch (also probed by super-projects/IDEs via BUILD_TESTING).
+option(BUILD_TESTING "Build the testing tree" OFF)
 
 set(ASAN_ENV "ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:symbolize=1")
 
-option(BUILD_TESTS "Build tests" ON)
-
-if(BUILD_TESTS)
+if(BUILD_TESTING)
   enable_testing()
   add_subdirectory(tests)
 endif()
