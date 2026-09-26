@@ -511,6 +511,8 @@ private:
   [[nodiscard]] BackendDeallocateFunc
   getDeallocate (MemType type) const noexcept;
 
+  // TODO: Consider making these methods public if they are needed outside of
+  // Memory<T>
   void allocate (MemoryRecord &record, MemorySide side);
   void *access (MemoryRecord &record, MemorySide side, AccessMode mode);
   void deleteDevice (MemoryRecord &record, bool copy_to_host);
@@ -1223,6 +1225,43 @@ MemoryManager::requiredAlignment (MemType host_mt, MemType device_mt,
     }
   return required;
 }
+
+inline void
+MemoryManager::allocate (MemoryRecord &record, MemorySide side)
+{
+  void *ptr = side == MemorySide::HOST ? record.h_ptr : record.d_ptr;
+  if (ptr != nullptr)
+    {
+      return;
+    }
+  const MemType mt = side == MemorySide::HOST ? record.h_mt : record.d_mt;
+  Backend backend;
+  {
+    std::lock_guard<std::mutex> lock (backend_mutex_);
+    backend = backends_[typeIndex (mt)];
+  }
+  if (backend.allocate == nullptr)
+    {
+      vfemError ("no backend registered for memory type");
+      return;
+    }
+  ptr = backend.allocate (record.bytes, record.alignment);
+  if (side == MemorySide::HOST)
+    {
+      record.h_ptr = ptr;
+      record.owns_h = true;
+    }
+  else
+    {
+      record.d_ptr = ptr;
+      record.owns_d = true;
+    }
+}
+
+
+
+
+
 
 } // namespace vfem
 #endif
