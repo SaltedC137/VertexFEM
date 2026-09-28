@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <alloca.h>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -12,6 +13,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 #include <mutex>
 #include <new>
@@ -1258,10 +1260,68 @@ MemoryManager::allocate (MemoryRecord &record, MemorySide side)
     }
 }
 
+inline void *
+MemoryManager::access (MemoryRecord &record, MemorySide side, AccessMode mode)
+{
+  // step the state of the memory record based on the requested access
+  const StateTransition step = nextState (record.state, side, mode);
+  if (!step.allowed)
+    {
+      vfemError ("invalid memory access: state transition not allowed");
+      return nullptr;
+    }
+  void *ptr = side == MemorySide::HOST ? record.h_ptr : record.d_ptr;
 
+  if (ptr == nullptr)
+    {
+      allocate (record, side);
+      if (ptr == nullptr)
+        {
+          return nullptr; // allocation failed
+        }
+    }
 
+  if (step.transfer == Transfer::HOST_TO_DEVICE)
+    {
+      copy (record.d_ptr, record.h_mt, record.h_ptr, record.h_mt,
+            record.bytes);
+    }
+  else if (step.transfer == Transfer::DEVICE_TO_HOST)
+    {
+      copy (record.h_ptr, record.h_mt, record.d_ptr, record.d_mt,
+            record.bytes);
+    }
 
+  record.state = step.new_state;
+  return ptr;
+}
 
+inline void
+MemoryManager::copy (void *dst, MemType dst_mt, const void *src,
+                     MemType src_mt, std::size_t bytes)
+{
+  if (bytes == 0 || dst == src)
+    {
+      return;
+    }
+  CopyFunc fn = nullptr;
+  {
+    std::lock_guard<std::mutex> lock (backend_mutex_);
+    fn = copies_[typeIndex (dst_mt) * MemTypeSize + typeIndex (src_mt)];
+  }
+  if (fn != nullptr)
+    {
+      fn (dst, src, bytes);
+    }
+  else if (isHostMemory (dst_mt) && isHostMemory (src_mt))
+    {
+      std::memcpy (dst, src, bytes);
+    }
+  else
+    {
+      vfemError ("no copy function registered for memory types");
+    }
+}
 
 } // namespace vfem
 #endif
