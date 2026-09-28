@@ -1323,5 +1323,32 @@ MemoryManager::copy (void *dst, MemType dst_mt, const void *src,
     }
 }
 
+inline void
+MemoryManager::deleteDevice (MemoryRecord &record, bool copy_to_host)
+{
+  if (record.d_ptr == nullptr || record.d_ptr == record.h_ptr)
+    {
+      return;
+    }
+  if (copy_to_host && record.h_ptr != nullptr
+      && record.state == MemoryState::DEVICE_VALID)
+    {
+      copy (record.h_ptr, record.h_mt, record.d_ptr, record.d_mt,
+            record.bytes);
+    }
+  if (record.owns_d && record.d_deallocate != nullptr)
+    {
+      record.d_deallocate (record.d_ptr, record.alignment);
+    }
+  record.d_ptr = nullptr;
+  record.owns_d = false;
+  record.d_deallocate = nullptr;
+  if (record.state != MemoryState::EMPTY
+      && record.state != MemoryState::UNINITIALIZED)
+    {
+      record.state = MemoryState::HOST_VALID;
+    }
+}
+
 } // namespace vfem
 #endif
