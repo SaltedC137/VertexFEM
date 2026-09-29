@@ -1546,30 +1546,35 @@ MemoryManager::access (MemoryRecord &record, MemorySide side, AccessMode mode)
       vfemError ("invalid memory access: state transition not allowed");
       return nullptr;
     }
-  void *ptr = side == MemorySide::HOST ? record.h_ptr : record.d_ptr;
-
-  if (ptr == nullptr)
+  void *&target_ptr = side == MemorySide::HOST ? record.h_ptr : record.d_ptr;
+  if (target_ptr == nullptr)
     {
       allocate (record, side);
-      if (ptr == nullptr)
+      if (target_ptr == nullptr)
         {
-          return nullptr; // allocation failed
+          return nullptr;
         }
     }
-
   if (step.transfer == Transfer::HOST_TO_DEVICE)
     {
-      copy (record.d_ptr, record.h_mt, record.h_ptr, record.h_mt,
-            record.bytes);
+      if (record.h_ptr == nullptr
+          || !copy (record.d_ptr, record.d_mt, record.h_ptr, record.h_mt,
+                    record.bytes))
+        {
+          return nullptr;
+        }
     }
   else if (step.transfer == Transfer::DEVICE_TO_HOST)
     {
-      copy (record.h_ptr, record.h_mt, record.d_ptr, record.d_mt,
-            record.bytes);
+      if (record.d_ptr == nullptr
+          || !copy (record.h_ptr, record.h_mt, record.d_ptr, record.d_mt,
+                    record.bytes))
+        {
+          return nullptr;
+        }
     }
-
   record.state = step.new_state;
-  return ptr;
+  return target_ptr;
 }
 
 inline bool
