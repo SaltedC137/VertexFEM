@@ -1179,6 +1179,17 @@ operator const U *() const noexcept
   return reinterpret_cast<U *> (h_ptr);
 }
 
+template <DeviceCopyable T>
+void
+Memory<T>::deleteDevice (bool copy_to_host)
+{
+  if (record_)
+    {
+      MemoryManager::get ().deleteDevice (*record_, copy_to_host);
+      refreshView ();
+    }
+}
+
 // error checking
 
 // Host

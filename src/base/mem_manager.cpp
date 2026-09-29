@@ -9,23 +9,31 @@ const char *MemTypeName[MemTypeSize]{
   "DEVICE_DEBUG", "DEVICE_UMPIRE", "DEVICE_UMPIRE_2",
 };
 
+
+
 MemoryRecord::~MemoryRecord () noexcept
 {
   if (h_ptr == d_ptr)
     {
-      DeallocateFunc deallocate = h_deallocate ? h_deallocate : d_deallocate;
-      if (h_ptr != nullptr && deallocate != nullptr)
+      if (h_ptr != nullptr)
         {
-          deallocate (h_ptr, alignment);
+          if (owns_h && h_deallocate != nullptr)
+            {
+              h_deallocate (h_ptr, alignment);
+            }
+          else if (owns_d && d_deallocate != nullptr)
+            {
+              d_deallocate (d_ptr, alignment);
+            }
         }
       return;
     }
 
-  if (d_ptr != nullptr && d_deallocate != nullptr)
+  if (owns_d && d_ptr != nullptr && d_deallocate != nullptr)
     {
       d_deallocate (d_ptr, alignment);
     }
-  if (h_ptr != nullptr && h_deallocate != nullptr)
+  if (owns_h && h_ptr != nullptr && h_deallocate != nullptr)
     {
       h_deallocate (h_ptr, alignment);
     }
