@@ -326,11 +326,11 @@ public:
   inline void makeAlias (const Memory &base, int offset, int size);
 
   inline T &operator[] (int index) noexcept;
-
   inline const T &operator[] (int index) const noexcept;
 
   operator T *() noexcept;
   operator const T *() const noexcept;
+
   template <typename U> inline explicit operator U *() noexcept;
   template <typename U> inline explicit operator const U *() const noexcept;
 
@@ -340,13 +340,15 @@ public:
     reset ();
   };
 
-  void deleteDevice (bool copy_to_host = true);
-
   int
   capaCity () const noexcept
   {
     return capacity;
   }
+
+  // deallocate the device memory, optionally copying the data back to the host
+
+  void deleteDevice (bool copy_to_host = true);
 
   // error checking for valid host/device pointers based on memory type and
   // ownership flags. This is used by MemoryManager and other internal
@@ -1123,7 +1125,106 @@ Memory<T>::makeAlias (const Memory &base, int offset, int size)
   swap (replacement);
 }
 
-//============================================================================
+// operator[] returns a reference to the element at the specified index. It
+// does not perform bounds checking, so the caller must ensure that the index
+// is valid.
+
+// []
+
+template <DeviceCopyable T>
+inline T &
+Memory<T>::operator[] (int index) noexcept
+{
+  return h_ptr[index];
+}
+
+template <DeviceCopyable T>
+inline const T &
+Memory<T>::operator[] (int index) const noexcept
+{
+  return h_ptr[index];
+}
+
+// *
+
+template <DeviceCopyable T>
+Memory<T>::
+operator T *() noexcept
+{
+  return h_ptr;
+}
+
+template <DeviceCopyable T>
+Memory<T>::
+operator const T *() const noexcept
+{
+  return h_ptr;
+}
+
+// U *
+
+template <DeviceCopyable T>
+template <typename U>
+inline Memory<T>::
+operator U *() noexcept
+{
+  return reinterpret_cast<U *> (h_ptr);
+}
+
+template <DeviceCopyable T>
+template <typename U>
+inline Memory<T>::
+operator const U *() const noexcept
+{
+  return reinterpret_cast<U *> (h_ptr);
+}
+
+// error checking
+
+// Host
+template <DeviceCopyable T>
+bool
+Memory<T>::hostIsValid () const noexcept
+{
+  return record_ && isValidOn (record_->state, MemorySide::HOST);
+}
+
+// Device
+template <DeviceCopyable T>
+bool
+Memory<T>::deviceIsValid () const noexcept
+{
+  return record_ && isValidOn (record_->state, MemorySide::DEVICE);
+}
+
+// Owns host pointer
+template <DeviceCopyable T>
+bool
+Memory<T>::ownsHostPtr () const noexcept
+{
+  return record_ && record_->owns_h;
+}
+
+// Owns device pointer
+template <DeviceCopyable T>
+bool
+Memory<T>::ownsDevicePtr () const noexcept
+{
+  return record_ && record_->owns_d;
+}
+
+// set host pointer ownership
+template <DeviceCopyable T>
+void
+Memory<T>::setHostPtrOwner (bool own) noexcept
+{
+  if (record_)
+    {
+      record_->owns_h = own;
+    }
+  flags = own ? (flags | OWNS_HOST) : (flags & ~OWNS_HOST);
+}
+
 // MemoryManager
 
 inline MemoryManager &
