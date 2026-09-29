@@ -1,10 +1,10 @@
 #pragma once
 
 #include <algorithm>
-#include <alloca.h>
 #include <cstdint>
 #include <memory>
 #include <utility>
+
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
@@ -422,13 +422,13 @@ public:
   MemType
   getHostMemoryType () const noexcept
   {
-    return h_mt;
+    return getHostMemType ();
   };
 
   MemType
   getDeviceMemoryType () const noexcept
   {
-    return d_mt;
+    return getDeviceMemType ();
   };
 
   // Copy type methods
@@ -829,7 +829,7 @@ Memory<T>::sideFor (MemoryClass mc) const
       vfemError ("invalid memory class");
       return MemorySide::HOST;
     }
-  if (memClassContainsType (mc, typeFor (side)))
+  if (!memClassContainsType (mc, typeFor (side)))
     {
       vfemError ("memory class does not match memory type");
     }
@@ -1585,25 +1585,35 @@ MemoryManager::copy (void *dst, MemType dst_mt, const void *src,
     {
       return true;
     }
+  if (dst == nullptr || src == nullptr)
+    {
+      vfemError ("null pointer passed to memory copy");
+      return false;
+    }
+  const std::size_t dst_index = typeIndex (dst_mt);
+  const std::size_t src_index = typeIndex (src_mt);
+  if (dst_index >= MemTypeSize || src_index >= MemTypeSize)
+    {
+      vfemError ("invalid memory type passed to memory copy");
+      return false;
+    }
   CopyFunc fn = nullptr;
   {
     std::lock_guard<std::mutex> lock (backend_mutex_);
-    fn = copies_[typeIndex (dst_mt) * MemTypeSize + typeIndex (src_mt)];
+    fn = copies_[dst_index * MemTypeSize + src_index];
   }
   if (fn != nullptr)
     {
       fn (dst, src, bytes);
+      return true;
     }
-  else if (isHostMemory (dst_mt) && isHostMemory (src_mt))
+  if (isHostMemory (dst_mt) && isHostMemory (src_mt))
     {
-      std::memcpy (dst, src, bytes);
+      std::memmove (dst, src, bytes);
+      return true;
     }
-  else
-    {
-      vfemError ("no copy function registered for memory types");
-      return false;
-    }
-  return true;
+  vfemError ("no copy function registered for memory types");
+  return false;
 }
 
 inline void
