@@ -1495,31 +1495,43 @@ MemoryManager::requiredAlignment (MemType host_mt, MemType device_mt,
 inline void
 MemoryManager::allocate (MemoryRecord &record, MemorySide side)
 {
-  void *ptr = side == MemorySide::HOST ? record.h_ptr : record.d_ptr;
+  const MemType mt = side == MemorySide::HOST ? record.h_mt : record.d_mt;
+  const std::size_t index = typeIndex (mt);
+  if (index >= backends_.size ())
+    {
+      vfemError ("invalid memory backend type");
+      return;
+    }
+  void *&ptr = side == MemorySide::HOST ? record.h_ptr : record.d_ptr;
   if (ptr != nullptr)
     {
       return;
     }
-  const MemType mt = side == MemorySide::HOST ? record.h_mt : record.d_mt;
   Backend backend;
   {
     std::lock_guard<std::mutex> lock (backend_mutex_);
-    backend = backends_[typeIndex (mt)];
+    backend = backends_[index];
   }
-  if (backend.allocate == nullptr)
+  if (backend.allocate == nullptr || backend.deallocate == nullptr)
     {
-      vfemError ("no backend registered for memory type");
+      vfemError ("no complete backend registered for memory type");
       return;
     }
-  ptr = backend.allocate (record.bytes, record.alignment);
+  void *new_ptr = backend.allocate (record.bytes, record.alignment);
+  if (new_ptr == nullptr)
+    {
+      vfemError ("memory backend allocation failed");
+      return;
+    }
+  ptr = new_ptr;
   if (side == MemorySide::HOST)
     {
-      record.h_ptr = ptr;
+      record.h_deallocate = backend.deallocate;
       record.owns_h = true;
     }
   else
     {
-      record.d_ptr = ptr;
+      record.d_deallocate = backend.deallocate;
       record.owns_d = true;
     }
 }
