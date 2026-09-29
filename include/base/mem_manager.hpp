@@ -94,8 +94,8 @@ enum class MemorySide : std::uint8_t
 
 enum class AccessMode : std::uint8_t
 {
-  READ,
-  WRITE,
+  READ_ONLY,
+  WRITE_ONLY,
   READ_WRITE
 };
 
@@ -142,14 +142,15 @@ nextState (MemoryState current, MemorySide target, AccessMode mode) noexcept
 {
   const bool valid_side
       = target == MemorySide::HOST || target == MemorySide::DEVICE;
-  const bool valid_mode = mode == AccessMode::READ || mode == AccessMode::WRITE
+  const bool valid_mode = mode == AccessMode::READ_ONLY
+                          || mode == AccessMode::WRITE_ONLY
                           || mode == AccessMode::READ_WRITE;
   if (!valid_side || !valid_mode || current == MemoryState::EMPTY)
     {
       return { false, Transfer::NONE, current };
     }
   const MemoryState target_state = exclusiveState (target);
-  if (mode == AccessMode::WRITE)
+  if (mode == AccessMode::WRITE_ONLY)
     {
       return { true, Transfer::NONE, target_state };
     }
@@ -164,14 +165,14 @@ nextState (MemoryState current, MemorySide target, AccessMode mode) noexcept
       if (isValidOn (current, target))
         {
           return { true, Transfer::NONE,
-                   mode == AccessMode::READ ? current : target_state };
+                   mode == AccessMode::READ_ONLY ? current : target_state };
         }
       const Transfer transfer = target == MemorySide::HOST
                                     ? Transfer::DEVICE_TO_HOST
                                     : Transfer::HOST_TO_DEVICE;
       return { true, transfer,
-               mode == AccessMode::READ ? MemoryState::SYNCHRONIZED
-                                        : target_state };
+               mode == AccessMode::READ_ONLY ? MemoryState::SYNCHRONIZED
+                                             : target_state };
     }
 
   return { false, Transfer::NONE, current };
@@ -399,7 +400,11 @@ public:
     return d_mt;
   }
 
-  [[nodiscard]] MemType getMemType () const noexcept;
+  [[nodiscard]] MemType
+  getMemType () const noexcept
+  {
+    return useDevice () ? d_mt : h_mt;
+  }
 
   // Memory access methods
 
@@ -530,7 +535,7 @@ private:
   void allocate (MemoryRecord &record, MemorySide side);
   void *access (MemoryRecord &record, MemorySide side, AccessMode mode);
   void deleteDevice (MemoryRecord &record, bool copy_to_host);
-  void copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
+  bool copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
              std::size_t bytes);
 
   [[nodiscard]] static bool isConcreteType (MemType type) noexcept;
@@ -1306,6 +1311,83 @@ Memory<T>::setHostPtrOwner (bool own) noexcept
   flags = own ? (flags | OWNS_HOST) : (flags & ~OWNS_HOST);
 }
 
+// Memory Class access methods
+
+template <DeviceCopyable T>
+T *
+Memory<T>::readWrite (MemoryClass mc, int size)
+{
+  if (!validAccessSize (size))
+    {
+      vfemError ("Memory access size is outside the allocated range");
+      return nullptr;
+    }
+  if (size == 0)
+    {
+      return nullptr;
+    }
+  if (!record_)
+    {
+      vfemError ("cannot access empty memory");
+      return nullptr;
+    }
+  const MemorySide side = sideFor (mc);
+  void *base
+      = MemoryManager::get ().access (*record_, side, AccessMode::READ_WRITE);
+  refreshView ();
+  return viewPointer (base);
+}
+
+template <DeviceCopyable T>
+const T *
+Memory<T>::read (MemoryClass mc, int size) const
+{
+  if (!validAccessSize (size))
+    {
+      vfemError ("Memory access size is outside the allocated range");
+      return nullptr;
+    }
+  if (size == 0)
+    {
+      return nullptr;
+    }
+  if (!record_)
+    {
+      vfemError ("cannot access empty memory");
+      return nullptr;
+    }
+  const MemorySide side = sideFor (mc);
+  void *base
+      = MemoryManager::get ().access (*record_, side, AccessMode::READ_ONLY);
+  refreshView ();
+  return viewPointer (base);
+}
+
+template <DeviceCopyable T>
+T *
+Memory<T>::write (MemoryClass mc, int size)
+{
+  if (!validAccessSize (size))
+    {
+      vfemError ("Memory access size is outside the allocated range");
+      return nullptr;
+    }
+  if (size == 0)
+    {
+      return nullptr;
+    }
+  if (!record_)
+    {
+      vfemError ("cannot access empty memory");
+      return nullptr;
+    }
+  const MemorySide side = sideFor (mc);
+  void *base
+      = MemoryManager::get ().access (*record_, side, AccessMode::WRITE_ONLY);
+  refreshView ();
+  return viewPointer (base);
+}
+
 // MemoryManager
 
 inline MemoryManager &
@@ -1478,13 +1560,13 @@ MemoryManager::access (MemoryRecord &record, MemorySide side, AccessMode mode)
   return ptr;
 }
 
-inline void
+inline bool
 MemoryManager::copy (void *dst, MemType dst_mt, const void *src,
                      MemType src_mt, std::size_t bytes)
 {
   if (bytes == 0 || dst == src)
     {
-      return;
+      return true;
     }
   CopyFunc fn = nullptr;
   {
@@ -1502,7 +1584,9 @@ MemoryManager::copy (void *dst, MemType dst_mt, const void *src,
   else
     {
       vfemError ("no copy function registered for memory types");
+      return false;
     }
+  return true;
 }
 
 inline void
