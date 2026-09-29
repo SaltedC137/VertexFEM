@@ -768,6 +768,8 @@ Memory<T>::deleteWrappedHost (void *ptr, std::size_t alignment) noexcept
     }
 }
 
+// helper access function
+
 template <DeviceCopyable T>
 std::size_t
 Memory<T>::checkedBytes (int size)
@@ -787,6 +789,64 @@ Memory<T>::checkedBytes (int size)
 
   return count * sizeof (T);
 }
+
+template <DeviceCopyable T>
+bool
+Memory<T>::validAccessSize (int size) const
+{
+  return size >= 0 && static_cast<std::size_t> (size) <= capacity;
+}
+
+template <DeviceCopyable T>
+MemorySide
+Memory<T>::sideFor (MemoryClass mc) const
+{
+  MemorySide side = MemorySide::HOST;
+  switch (mc)
+    {
+    case MemoryClass::HOST:
+    case MemoryClass::HOST_32:
+    case MemoryClass::HOST_64:
+      side = MemorySide::HOST;
+      break;
+    case MemoryClass::DEVICE:
+      side = MemorySide::DEVICE;
+      break;
+    case MemoryClass::MANAGED:
+      if (h_mt != MemType::MANAGED || d_mt != MemType::MANAGED)
+        {
+          vfemError ("MANAGED access requested for non-managed memory");
+          return MemorySide::HOST;
+        }
+      side = useDevice () ? MemorySide::DEVICE : MemorySide::HOST;
+      break;
+    default:
+      vfemError ("invalid memory class");
+      return MemorySide::HOST;
+    }
+  if (memClassContainsType (mc, typeFor (side)))
+    {
+      vfemError ("memory class does not match memory type");
+    }
+  return side;
+}
+
+template <DeviceCopyable T>
+MemType
+Memory<T>::typeFor (MemorySide side) const noexcept
+{
+  return side == MemorySide::HOST ? h_mt : d_mt;
+}
+
+template <DeviceCopyable T>
+T *
+Memory<T>::viewPointer (void *base) const noexcept
+{
+  return base == nullptr ? nullptr
+                         : static_cast<T *> (base) + byte_offset_ / sizeof (T);
+}
+
+// memory type query methods
 
 template <DeviceCopyable T>
 bool
