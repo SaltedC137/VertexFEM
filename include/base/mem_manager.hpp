@@ -140,31 +140,41 @@ isValidOn (MemoryState state, MemorySide side) noexcept
 [[nodiscard]] constexpr StateTransition
 nextState (MemoryState current, MemorySide target, AccessMode mode) noexcept
 {
+  const bool valid_side
+      = target == MemorySide::HOST || target == MemorySide::DEVICE;
+  const bool valid_mode = mode == AccessMode::READ || mode == AccessMode::WRITE
+                          || mode == AccessMode::READ_WRITE;
+  if (!valid_side || !valid_mode || current == MemoryState::EMPTY)
+    {
+      return { false, Transfer::NONE, current };
+    }
   const MemoryState target_state = exclusiveState (target);
-
   if (mode == AccessMode::WRITE)
     {
       return { true, Transfer::NONE, target_state };
     }
-
-  if (current == MemoryState::EMPTY || current == MemoryState::UNINITIALIZED)
+  if (current == MemoryState::UNINITIALIZED)
     {
       return { false, Transfer::NONE, current };
     }
-
-  if (isValidOn (current, target))
+  if (current == MemoryState::HOST_VALID
+      || current == MemoryState::DEVICE_VALID
+      || current == MemoryState::SYNCHRONIZED)
     {
-      return { true, Transfer::NONE,
-               mode == AccessMode::READ ? current : target_state };
+      if (isValidOn (current, target))
+        {
+          return { true, Transfer::NONE,
+                   mode == AccessMode::READ ? current : target_state };
+        }
+      const Transfer transfer = target == MemorySide::HOST
+                                    ? Transfer::DEVICE_TO_HOST
+                                    : Transfer::HOST_TO_DEVICE;
+      return { true, transfer,
+               mode == AccessMode::READ ? MemoryState::SYNCHRONIZED
+                                        : target_state };
     }
 
-  const Transfer transfer = target == MemorySide::HOST
-                                ? Transfer::DEVICE_TO_HOST
-                                : Transfer::HOST_TO_DEVICE;
-
-  return { true, transfer,
-           mode == AccessMode::READ ? MemoryState::SYNCHRONIZED
-                                    : target_state };
+  return { false, Transfer::NONE, current };
 }
 
 [[nodiscard]] inline bool
