@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <memory>
 #include <utility>
-
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
@@ -1397,7 +1396,14 @@ MemoryManager::get ()
   return instance;
 }
 
-inline MemoryManager::MemoryManager () = default;
+inline MemoryManager::MemoryManager ()
+{
+  auto &backend = backends_[typeIndex (MemType::HOST)];
+  backend.allocate = [] (std::size_t bytes, std::size_t alignment) -> void *
+    { return ::operator new (bytes, std::align_val_t{ alignment }); };
+  backend.deallocate = [] (void *ptr, std::size_t alignment) noexcept
+    { ::operator delete (ptr, std::align_val_t{ alignment }); };
+}
 
 inline void
 MemoryManager::registerBackend (MemType type, Backend backend)
