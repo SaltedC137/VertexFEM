@@ -1196,14 +1196,14 @@ template <DeviceCopyable T>
 inline T &
 Memory<T>::operator[] (int index) noexcept
 {
-  return h_ptr[index];
+  return readWrite (MemoryClass::HOST, capacity)[index];
 }
 
 template <DeviceCopyable T>
 inline const T &
 Memory<T>::operator[] (int index) const noexcept
 {
-  return h_ptr[index];
+  return readWrite (MemoryClass::HOST, capacity)[index];
 }
 
 // *
@@ -1212,14 +1212,14 @@ template <DeviceCopyable T>
 Memory<T>::
 operator T *() noexcept
 {
-  return h_ptr;
+  return readWrite (MemoryClass::HOST, capacity);
 }
 
 template <DeviceCopyable T>
 Memory<T>::
 operator const T *() const noexcept
 {
-  return h_ptr;
+  return readWrite (MemoryClass::HOST, capacity);
 }
 
 // U *

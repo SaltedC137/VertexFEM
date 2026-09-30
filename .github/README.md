@@ -1,4 +1,4 @@
-              __  __                 __                   ____    ____                
+              __  __                 __                   ____    ____
              /\ \/\ \               /\ \__               /\  _`\ /\  _`\   /'\_/`\    
              \ \ \ \ \     __   _ __\ \ ,_\    __   __  _\ \ \L\_\ \ \L\_\/\      \   
               \ \ \ \ \  /'__`\/\`'__\ \ \/  /'__`\/\ \/'\\ \  _\/\ \  _\L\ \ \__\ \  
@@ -72,6 +72,10 @@ VertexFEM/
 └── 3party/          # Third-party dependencies
 ```
 
+## Testing
+
+See the [CTest guide](../tests/README.md) for build and test commands.
+
 ## License
 
-This project is licensed under the Academic Free License v3.0. See [LICENSE](LICENSE) for details.
+This project is licensed under the Academic Free License v3.0. See [LICENSE](../LICENSE) for details.

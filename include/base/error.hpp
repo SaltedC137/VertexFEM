@@ -6,7 +6,6 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
-#include <iomanip>
 
 #include <source_location>
 #include <sstream>

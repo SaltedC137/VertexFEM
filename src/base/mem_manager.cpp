@@ -11,30 +11,36 @@ const char *MemTypeName[MemTypeSize]{
 
 MemoryRecord::~MemoryRecord () noexcept
 {
-  if (h_ptr == d_ptr)
+  const bool shared_storage = h_ptr != nullptr && h_ptr == d_ptr;
+  if (shared_storage)
     {
-      if (h_ptr != nullptr)
+      // One physical allocation has one destruction, regardless of which side
+      // originally acquired ownership. The callback must match that
+      // allocation.
+      if (owns_h && h_deallocate != nullptr)
         {
-          if (owns_h && h_deallocate != nullptr)
-            {
-              h_deallocate (h_ptr, h_alignment);
-            }
-          else if (owns_d && d_deallocate != nullptr)
-            {
-              d_deallocate (d_ptr, d_alignment);
-            }
+          h_deallocate (h_ptr, h_alignment);
         }
-      return;
+      else if (owns_d && d_deallocate != nullptr)
+        {
+          d_deallocate (d_ptr, d_alignment);
+        }
     }
-
-  if (owns_d && d_ptr != nullptr && d_deallocate != nullptr)
+  else
     {
-      d_deallocate (d_ptr, d_alignment);
+      if (owns_d && d_ptr != nullptr && d_deallocate != nullptr)
+        {
+          d_deallocate (d_ptr, d_alignment);
+        }
+      if (owns_h && h_ptr != nullptr && h_deallocate != nullptr)
+        {
+          h_deallocate (h_ptr, h_alignment);
+        }
     }
-  if (owns_h && h_ptr != nullptr && h_deallocate != nullptr)
-    {
-      h_deallocate (h_ptr, h_alignment);
-    }
+  h_ptr = nullptr;
+  d_ptr = nullptr;
+  owns_d = false;
+  owns_h = false;
 }
 
 MemType
@@ -74,17 +80,17 @@ memClassContainsType (MemoryClass mc, MemType type)
   switch (mc)
     {
     case MemoryClass::HOST:
-      return isHostMemory (type) && type != MemType::MANAGED;
+      return isHostMemory (type);
     case MemoryClass::HOST_32:
       return type == MemType::HOST_32;
     case MemoryClass::HOST_64:
       return type == MemType::HOST_64;
     case MemoryClass::DEVICE:
-      return isDeviceMemory (type) && type != MemType::MANAGED;
+      return isDeviceMemory (type);
     case MemoryClass::MANAGED:
       return type == MemType::MANAGED;
     }
-
   return false;
 }
+
 }
