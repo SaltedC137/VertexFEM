@@ -19,11 +19,11 @@ MemoryRecord::~MemoryRecord () noexcept
         {
           if (owns_h && h_deallocate != nullptr)
             {
-              h_deallocate (h_ptr, alignment);
+              h_deallocate (h_ptr, h_alignment);
             }
           else if (owns_d && d_deallocate != nullptr)
             {
-              d_deallocate (d_ptr, alignment);
+              d_deallocate (d_ptr, d_alignment);
             }
         }
       return;
@@ -31,11 +31,11 @@ MemoryRecord::~MemoryRecord () noexcept
 
   if (owns_d && d_ptr != nullptr && d_deallocate != nullptr)
     {
-      d_deallocate (d_ptr, alignment);
+      d_deallocate (d_ptr, d_alignment);
     }
   if (owns_h && h_ptr != nullptr && h_deallocate != nullptr)
     {
-      h_deallocate (h_ptr, alignment);
+      h_deallocate (h_ptr, h_alignment);
     }
 }
 
