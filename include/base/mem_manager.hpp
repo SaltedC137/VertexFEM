@@ -1602,7 +1602,11 @@ MemoryManager::allocate (MemoryRecord &record, MemorySide side)
       vfemError ("memory backend allocation failed");
       return;
     }
-  ptr = new_ptr;
+  if (mt == MemType::MANAGED)
+    {
+      record.h_ptr = new_ptr;
+      record.d_ptr = new_ptr;
+    }
   if (side == MemorySide::HOST)
     {
       record.h_deallocate = backend.deallocate;

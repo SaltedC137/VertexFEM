@@ -9,8 +9,6 @@ const char *MemTypeName[MemTypeSize]{
   "DEVICE_DEBUG", "DEVICE_UMPIRE", "DEVICE_UMPIRE_2",
 };
 
-
-
 MemoryRecord::~MemoryRecord () noexcept
 {
   if (h_ptr == d_ptr)
