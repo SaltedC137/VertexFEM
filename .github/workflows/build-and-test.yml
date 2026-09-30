@@ -1,0 +1,80 @@
+name: Build and test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} / ${{ matrix.compiler }} / ${{ matrix.configuration }} / double=${{ matrix.double }} / ASan=${{ matrix.asan }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: GCC
+            configuration: Debug
+            double: 'ON'
+            asan: 'OFF'
+          - os: ubuntu-latest
+            compiler: GCC
+            configuration: Debug
+            double: 'OFF'
+            asan: 'OFF'
+          - os: ubuntu-latest
+            compiler: GCC
+            configuration: Release
+            double: 'ON'
+            asan: 'OFF'
+          - os: ubuntu-latest
+            compiler: Clang
+            configuration: Debug
+            double: 'ON'
+            asan: 'OFF'
+          - os: ubuntu-latest
+            compiler: GCC
+            configuration: Debug
+            double: 'ON'
+            asan: 'ON'
+          - os: macos-15-intel
+            compiler: AppleClang
+            configuration: Debug
+            double: 'ON'
+            asan: 'OFF'
+          - os: windows-latest
+            compiler: MSVC
+            configuration: Debug
+            double: 'ON'
+            asan: 'OFF'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: |
+          compiler_options=()
+          if [[ '${{ matrix.compiler }}' == 'Clang' ]]; then
+            compiler_options+=(-DCMAKE_CXX_COMPILER=clang++)
+          fi
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} \
+            -DBUILD_TESTING=ON \
+            -DVERTEXFEM_USE_DOUBLE=${{ matrix.double }} \
+            -DENABLE_ASAN=${{ matrix.asan }} \
+            "${compiler_options[@]}"
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.configuration }} --parallel
+
+      - name: Test
+        run: ctest --test-dir build --build-config ${{ matrix.configuration }} --output-on-failure

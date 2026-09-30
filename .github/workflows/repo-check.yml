@@ -1,11 +1,11 @@
-name: "checks"
+name: Repository checks
 
 permissions:
-  actions: write
-  pull-requests: read
+  contents: read
 
 on:
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -14,4 +14,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # TODO
+  code-style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: |
+          if ! command -v clang-format >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y clang-format
+          fi
+
+      - name: Check memory manager formatting
+        run: clang-format --dry-run --Werror include/base/mem_manager.hpp tests/mem_manager/mem_manager_test.cpp
+
+      - name: Check changed lines
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE_SHA" ]] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            BASE_SHA=$(git rev-parse HEAD^ 2>/dev/null || git hash-object -t tree /dev/null)
+          fi
+          git diff --check "$BASE_SHA" HEAD
+          while read -r file first last; do
+            clang-format --dry-run --Werror --lines="$first:$last" "$file"
+          done < <(git diff --unified=0 --diff-filter=ACMRT "$BASE_SHA" HEAD -- '*.cpp' '*.hpp' |
+                   awk '/^\+\+\+ b\// { file = substr($0, 7) }
+                        /^@@ / {
+                          match($0, /\+[0-9]+(,[0-9]+)?/)
+                          range = substr($0, RSTART + 1, RLENGTH - 1)
+                          split(range, parts, ",")
+                          count = parts[2] == "" ? 1 : parts[2]
+                          if (count > 0) print file, parts[1], parts[1] + count - 1
+                        }')
