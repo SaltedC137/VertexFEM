@@ -909,6 +909,7 @@ Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
                                         : alignof (std::max_align_t);
   void *ptr = ::operator new (bytes, std::align_val_t{ alignment });
   auto record = std::make_shared<MemoryRecord> ();
+
   record->h_ptr = ptr;
   record->bytes = bytes;
   record->alignment = alignment;
@@ -1396,14 +1397,7 @@ MemoryManager::get ()
   return instance;
 }
 
-inline MemoryManager::MemoryManager ()
-{
-  auto &backend = backends_[typeIndex (MemType::HOST)];
-  backend.allocate = [] (std::size_t bytes, std::size_t alignment) -> void *
-    { return ::operator new (bytes, std::align_val_t{ alignment }); };
-  backend.deallocate = [] (void *ptr, std::size_t alignment) noexcept
-    { ::operator delete (ptr, std::align_val_t{ alignment }); };
-}
+inline MemoryManager::MemoryManager () = default;
 
 inline void
 MemoryManager::registerBackend (MemType type, Backend backend)
