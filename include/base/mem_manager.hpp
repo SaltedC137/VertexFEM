@@ -853,6 +853,7 @@ Memory<T>::viewPointer (void *base) const noexcept
 
 // memory type query methods
 
+
 template <DeviceCopyable T>
 bool
 Memory<T>::empty () const noexcept
