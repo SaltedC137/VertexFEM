@@ -465,26 +465,23 @@ private:
   void moveFrom (Memory &&other) noexcept;
 
 #if defined(VFEM_USE_CUDA) || defined(VFEM_USE_HIP)
-
-  template <typename T, std::size_t new_align_bytes = alignas (T)>
+  template <typename U, std::size_t new_align_bytes = alignof (U)>
   struct AllocDevice
   {
-    static_assert (new_align_bytes <= 256, "cudaMalloc / hipMalloc ");
-    static T *
+    static_assert (new_align_bytes <= 256, "cudaMalloc / hipMalloc");
+    static U *
     New (std::size_t size)
     {
-      T *ptr = nullptr;
-
+      U *ptr = nullptr;
 #ifdef VFEM_USE_HIP
-      hipMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (T));
+      hipMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (U));
 #else
-      cudaMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (T));
+      cudaMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (U));
 #endif
       return ptr;
     }
-
     static void
-    Delete (T *ptr)
+    Delete (U *ptr)
     {
 #ifdef VFEM_USE_HIP
       hipFree (ptr);
