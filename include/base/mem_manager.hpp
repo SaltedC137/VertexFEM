@@ -230,7 +230,8 @@ struct MemoryRecord final
   void *h_ptr{};
   void *d_ptr{};
   std::size_t bytes{};
-  std::size_t alignment{ alignof (std::max_align_t) };
+  std::size_t h_alignment{ alignof (std::max_align_t) };
+  std::size_t d_alignment{ alignof (std::max_align_t) };
   MemType h_mt{ MemType ::HOST };
   MemType d_mt{ MemType ::DEVICE };
   DeallocateFunc h_deallocate{};
@@ -432,7 +433,7 @@ public:
 
   // Copy type methods
   inline void copyFrom (const Memory &other, int size);
-  inline void copyTo (const Memory &other, int size) const;
+  inline void copyTo (Memory &other, int size) const;
   inline void copyFromHost (const T *host_ptr, int size);
   inline void copyToHost (T *host_ptr, int size) const;
 
@@ -548,7 +549,6 @@ private:
   mutable std::mutex backend_mutex_;
 };
 
-//============================================================================
 // private member function implementations
 
 template <DeviceCopyable T>
@@ -764,12 +764,9 @@ Memory<T>::configureTypes (MemType memory_type)
 
 template <DeviceCopyable T>
 void
-Memory<T>::deleteWrappedHost (void *ptr, std::size_t alignment) noexcept
+Memory<T>::deleteWrappedHost (void *ptr, std::size_t /*unused*/) noexcept
 {
-  if (ptr != nullptr)
-    {
-      ::operator delete (ptr, std::align_val_t{ alignment });
-    }
+  delete[] static_cast<T *> (ptr);
 }
 
 // helper access function
@@ -870,70 +867,56 @@ template <DeviceCopyable T>
 void
 Memory<T>::allocate (int size, MemType mt)
 {
-  configureTypes (mt);
-  allocate (size, h_mt, d_mt);
+  if (mt == MemType::PRESERVE)
+    {
+      allocate (size, h_mt, d_mt);
+      return;
+    }
+  Memory configured (mt);
+  allocate (size, configured.h_mt, configured.d_mt);
 }
 
 template <DeviceCopyable T>
 void
 Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
 {
-  if (!isHostMemory (host_mt))
+  if (size < 0 || !isHostMemory (host_mt) || !isDeviceMemory (device_mt)
+      || ((host_mt == MemType::MANAGED) != (device_mt == MemType::MANAGED)))
     {
-      vfemError ("host memory type is not host-accessible");
+      vfemError ("invalid memory size or memory type pair");
       return;
     }
-  if (!isDeviceMemory (device_mt))
-    {
-      vfemError ("device memory type is not device-accessible");
-      return;
-    }
+  Memory replacement;
+  replacement.h_mt = host_mt;
+  replacement.d_mt = device_mt;
   if (size == 0)
     {
-      reset ();
-      h_mt = host_mt;
-      d_mt = device_mt;
+      swap (replacement);
       return;
     }
-  const std::size_t bytes = checkedBytes (size);
-  if (bytes == 0)
-    {
-      reset ();
-      h_mt = host_mt;
-      d_mt = device_mt;
-      return;
-    }
-  constexpr std::size_t alignment = alignof (T) > alignof (std::max_align_t)
-                                        ? alignof (T)
-                                        : alignof (std::max_align_t);
-  void *ptr = ::operator new (bytes, std::align_val_t{ alignment });
   auto record = std::make_shared<MemoryRecord> ();
-
-  record->h_ptr = ptr;
-  record->bytes = bytes;
-  record->alignment = alignment;
+  record->bytes = checkedBytes (size);
+  if (record->bytes == 0)
+    {
+      return;
+    }
   record->h_mt = host_mt;
   record->d_mt = device_mt;
-  record->h_deallocate = &Memory<T>::deleteWrappedHost;
-  record->owns_h = true;
-  record->state = MemoryState::UNINITIALIZED;
-  unsigned new_flags = Registered | OWNS_HOST | OWNS_INTERNAL;
-  if (host_mt == MemType::MANAGED && device_mt == MemType::MANAGED)
+  record->h_alignment
+      = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
+  record->d_alignment
+      = MemoryManager::requiredAlignment (device_mt, device_mt, alignof (T));
+  MemoryManager::get ().allocate (*record, MemorySide::HOST);
+  if (record->h_ptr == nullptr)
     {
-      record->d_ptr = ptr;
-      record->d_deallocate = &Memory<T>::deleteWrappedHost;
-      record->owns_d = true;
-      new_flags |= OWNS_DEVICE;
+      return;
     }
-  reset ();
-  record_ = std::move (record);
-  byte_offset_ = 0;
-  capacity = size;
-  h_mt = host_mt;
-  d_mt = device_mt;
-  flags = new_flags;
-  h_ptr = static_cast<T *> (record_->h_ptr);
-  d_ptr = static_cast<T *> (record_->d_ptr);
+  record->state = MemoryState::UNINITIALIZED;
+  replacement.record_ = std::move (record);
+  replacement.capacity = size;
+  replacement.flags = Registered | OWNS_HOST | OWNS_INTERNAL;
+  replacement.refreshView ();
+  swap (replacement);
 }
 
 template <DeviceCopyable T>
@@ -972,7 +955,6 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
   T *device_ptr = isDeviceMemory (mt) ? ptr : nullptr;
   const bool valid_host = isHostMemory (mt);
   const bool valid_device = isDeviceMemory (mt);
-
   if (size > 0 && ptr == nullptr)
     {
       vfemError ("wrapped pointer must be non-null for non-zero size");
@@ -984,7 +966,6 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
       vfemError ("wrapped pointer does not satisfy memory type alignment");
       return;
     }
-
   Memory replacement;
   replacement.h_mt = host_mt;
   replacement.d_mt = device_mt;
@@ -993,9 +974,7 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
       swap (replacement);
       return;
     }
-
   const std::size_t bytes = checkedBytes (size);
-
   auto record = std::make_shared<MemoryRecord> ();
   // Set the record fields based on the provided parameters
   record->h_ptr = host_ptr;
@@ -1003,24 +982,29 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
   record->bytes = bytes;
   record->h_mt = host_mt;
   record->d_mt = device_mt;
-  record->alignment
-      = MemoryManager::requiredAlignment (host_mt, device_mt, alignof (T));
-
-  record->h_deallocate = isPlainHostType (host_mt)
-                             ? &Memory<T>::deleteWrappedHost
-                             : MemoryManager::get ().getDeallocate (host_mt);
-  record->d_deallocate = MemoryManager::get ().getDeallocate (device_mt);
-  record->owns_h = own && host_ptr != nullptr;
-  record->owns_d = own && device_ptr != nullptr && device_ptr != host_ptr;
-
-  if (own
-      && ((record->owns_h && record->h_deallocate == nullptr)
-          || (record->owns_d && record->d_deallocate == nullptr)))
+  record->h_alignment
+      = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
+  record->d_alignment
+      = MemoryManager::requiredAlignment (device_mt, device_mt, alignof (T));
+  const DeallocateFunc host_deallocate
+      = host_mt == MemType::HOST
+            ? &Memory<T>::deleteWrappedHost
+            : MemoryManager::get ().getDeallocate (host_mt);
+  const DeallocateFunc device_deallocate
+      = MemoryManager::get ().getDeallocate (device_mt);
+  const bool owns_host = own && host_ptr != nullptr;
+  const bool owns_device
+      = own && device_ptr != nullptr && device_ptr != host_ptr;
+  if ((owns_host && host_deallocate == nullptr)
+      || (owns_device && device_deallocate == nullptr))
     {
-      vfemError ("no deallocator is registered for owned wrapped memory");
+      vfemError ("no deallocator registered for owned wrapped memory");
       return;
     }
-
+  record->h_deallocate = host_deallocate;
+  record->d_deallocate = device_deallocate;
+  record->owns_h = owns_host;
+  record->owns_d = owns_device;
   if (valid_host && valid_device)
     {
       record->state = MemoryState::SYNCHRONIZED;
@@ -1117,24 +1101,29 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
   record->bytes = bytes;
   record->h_mt = host_mt;
   record->d_mt = device_mt;
-  record->alignment
-      = MemoryManager::requiredAlignment (host_mt, device_mt, alignof (T));
-
-  record->h_deallocate = isPlainHostType (host_mt)
-                             ? &Memory<T>::deleteWrappedHost
-                             : MemoryManager::get ().getDeallocate (host_mt);
-
-  record->d_deallocate = MemoryManager::get ().getDeallocate (device_mt);
-  record->owns_h = own && host_ptr != nullptr;
-  record->owns_d = own && device_ptr != nullptr && device_ptr != host_ptr;
-
-  if (own
-      && ((record->owns_h && record->h_deallocate == nullptr)
-          || (record->owns_d && record->d_deallocate == nullptr)))
+  record->h_alignment
+      = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
+  record->d_alignment
+      = MemoryManager::requiredAlignment (device_mt, device_mt, alignof (T));
+  const DeallocateFunc host_deallocate
+      = host_mt == MemType::HOST
+            ? &Memory<T>::deleteWrappedHost
+            : MemoryManager::get ().getDeallocate (host_mt);
+  const DeallocateFunc device_deallocate
+      = MemoryManager::get ().getDeallocate (device_mt);
+  const bool owns_host = own && host_ptr != nullptr;
+  const bool owns_device
+      = own && device_ptr != nullptr && device_ptr != host_ptr;
+  if ((owns_host && host_deallocate == nullptr)
+      || (owns_device && device_deallocate == nullptr))
     {
-      vfemError ("no deallocator is registered for owned wrapped memory");
+      vfemError ("no deallocator registered for owned wrapped memory");
       return;
     }
+  record->h_deallocate = host_deallocate;
+  record->d_deallocate = device_deallocate;
+  record->owns_h = owns_host;
+  record->owns_d = owns_device;
 
   if (valid_host && valid_device)
     {
@@ -1380,14 +1369,29 @@ Memory<T>::write (MemoryClass mc, int size)
       vfemError ("cannot access empty memory");
       return nullptr;
     }
+  const bool whole_record
+      = byte_offset_ == 0
+        && static_cast<std::size_t> (size) * sizeof (T) == record_->bytes;
+  if (!whole_record && record_->state == MemoryState::UNINITIALIZED)
+    {
+      vfemError ("partial write requires initialized memory");
+      return nullptr;
+    }
+  const AccessMode mode
+      = whole_record ? AccessMode::WRITE_ONLY : AccessMode::READ_WRITE;
   const MemorySide side = sideFor (mc);
-  void *base
-      = MemoryManager::get ().access (*record_, side, AccessMode::WRITE_ONLY);
+  void *base = MemoryManager::get ().access (*record_, side, mode);
   refreshView ();
   return viewPointer (base);
 }
 
-// MemoryManager
+// Copy type methods
+
+
+
+
+
+// MemoryManager function implementations
 
 inline MemoryManager &
 MemoryManager::get ()
@@ -1523,7 +1527,9 @@ MemoryManager::allocate (MemoryRecord &record, MemorySide side)
       vfemError ("no complete backend registered for memory type");
       return;
     }
-  void *new_ptr = backend.allocate (record.bytes, record.alignment);
+  const std::size_t alignment
+      = side == MemorySide::HOST ? record.h_alignment : record.d_alignment;
+  void *new_ptr = backend.allocate (record.bytes, alignment);
   if (new_ptr == nullptr)
     {
       vfemError ("memory backend allocation failed");
@@ -1629,21 +1635,32 @@ MemoryManager::deleteDevice (MemoryRecord &record, bool copy_to_host)
     {
       return;
     }
-  if (copy_to_host && record.h_ptr != nullptr
-      && record.state == MemoryState::DEVICE_VALID)
+  if (copy_to_host && record.state == MemoryState::DEVICE_VALID)
     {
-      copy (record.h_ptr, record.h_mt, record.d_ptr, record.d_mt,
-            record.bytes);
+      if (record.h_ptr == nullptr)
+        {
+          allocate (record, MemorySide::HOST);
+        }
+      if (record.h_ptr == nullptr
+          || !copy (record.h_ptr, record.h_mt, record.d_ptr, record.d_mt,
+                    record.bytes))
+        {
+          return;
+        }
     }
   if (record.owns_d && record.d_deallocate != nullptr)
     {
-      record.d_deallocate (record.d_ptr, record.alignment);
+      record.d_deallocate (record.d_ptr, record.d_alignment);
     }
   record.d_ptr = nullptr;
   record.owns_d = false;
   record.d_deallocate = nullptr;
-  if (record.state != MemoryState::EMPTY
-      && record.state != MemoryState::UNINITIALIZED)
+  if (record.state == MemoryState::DEVICE_VALID)
+    {
+      record.state = copy_to_host ? MemoryState::HOST_VALID
+                                  : MemoryState::UNINITIALIZED;
+    }
+  else if (record.state == MemoryState::SYNCHRONIZED)
     {
       record.state = MemoryState::HOST_VALID;
     }
