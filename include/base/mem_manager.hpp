@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <utility>
+
 #ifndef MEM_MANAGER_HPP
 #define MEM_MANAGER_HPP
 
@@ -1387,9 +1388,75 @@ Memory<T>::write (MemoryClass mc, int size)
 
 // Copy type methods
 
+template <DeviceCopyable T>
+void
+Memory<T>::copyFrom (const Memory &other, int size)
+{
+  if (!validAccessSize (size) || !other.validAccessSize (size))
+    {
+      vfemError ("copy size is outside the allocated range");
+      return;
+    }
+  if (size == 0
+      || (record_ == other.record_ && byte_offset_ == other.byte_offset_))
+    {
+      return;
+    }
+  const T *source = other.read (MemoryClass::HOST, size);
+  T *destination = write (MemoryClass::HOST, size);
+  if (source != nullptr && destination != nullptr)
+    {
+      std::memmove (destination, source,
+                    static_cast<std::size_t> (size) * sizeof (T));
+    }
+}
 
+template <DeviceCopyable T>
+void
+Memory<T>::copyTo (Memory &other, int size) const
+{
+  other.copyFrom (*this, size);
+}
 
+template <DeviceCopyable T>
+void
+Memory<T>::copyFromHost (const T *host_ptr, int size)
+{
+  if (!validAccessSize (size) || (size > 0 && host_ptr == nullptr))
+    {
+      vfemError ("invalid host source pointer or copy size");
+      return;
+    }
+  if (size > 0)
+    {
+      T *destination = write (MemoryClass::HOST, size);
+      if (destination != nullptr)
+        {
+          std::memmove (destination, host_ptr,
+                        static_cast<std::size_t> (size) * sizeof (T));
+        }
+    }
+}
 
+template <DeviceCopyable T>
+void
+Memory<T>::copyToHost (T *host_ptr, int size) const
+{
+  if (!validAccessSize (size) || (size > 0 && host_ptr == nullptr))
+    {
+      vfemError ("invalid host destination pointer or copy size");
+      return;
+    }
+  if (size > 0)
+    {
+      const T *source = read (MemoryClass::HOST, size);
+      if (source != nullptr)
+        {
+          std::memmove (host_ptr, source,
+                        static_cast<std::size_t> (size) * sizeof (T));
+        }
+    }
+}
 
 // MemoryManager function implementations
 
