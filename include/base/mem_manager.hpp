@@ -213,7 +213,7 @@ isDeviceMemory (MemType type) noexcept
 
 VFEM_EXPORT MemType getMemType (MemoryClass mc, int index = 0);
 VFEM_EXPORT bool memClassContainsType (MemoryClass mc, MemType type);
-VFEM_EXPORT MemoryClass operator* (MemoryClass mc1, MemoryClass mc2);
+VFEM_EXPORT MemoryClass operator* (MemoryClass lhs, MemoryClass rhs);
 VFEM_EXPORT void memoryPrintFlags (unsigned flags) noexcept;
 
 /// Class used by VFEM to manage memory allocations and deallocations across
@@ -1452,6 +1452,99 @@ Memory<T>::copyToHost (T *host_ptr, int size) const
                         static_cast<std::size_t> (size) * sizeof (T));
         }
     }
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::sync (const Memory &other) const
+{
+  if (record_ != other.record_)
+    {
+      vfemError ("cannot synchronize memory from different records");
+      return;
+    }
+  refreshView ();
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::syncAlias (const Memory &base, int alias_size) const
+{
+  if (!validAccessSize (alias_size) || record_ != base.record_
+      || byte_offset_ < base.byte_offset_)
+    {
+      vfemError ("invalid alias size, memory record, or offset");
+      return;
+    }
+  const std::size_t alias_bytes = checkedBytes (alias_size);
+  const std::size_t base_bytes = checkedBytes (base.capacity);
+  if ((alias_size > 0 && alias_bytes == 0)
+      || (base.capacity > 0 && base_bytes == 0))
+    {
+      return;
+    }
+  const std::size_t relative = byte_offset_ - base.byte_offset_;
+  if (relative > base_bytes || alias_bytes > base_bytes - relative)
+    {
+      vfemError ("alias range exceeds its base range");
+      return;
+    }
+  refreshView ();
+}
+
+template <DeviceCopyable T>
+void
+Memory<T>::printFlags () const
+{
+  unsigned snapshot
+      = flags
+        & ~(Registered | OWNS_HOST | OWNS_DEVICE | VALID_HOST | VALID_DEVICE);
+  snapshot |= record_ ? Registered : 0U;
+  snapshot |= ownsHostPtr () ? OWNS_HOST : 0U;
+  snapshot |= ownsDevicePtr () ? OWNS_DEVICE : 0U;
+  snapshot |= hostIsValid () ? VALID_HOST : 0U;
+  snapshot |= deviceIsValid () ? VALID_DEVICE : 0U;
+  memoryPrintFlags (snapshot);
+}
+
+template <DeviceCopyable T>
+int
+Memory<T>::compareHostAndDevice (int size) const
+{
+  if (!validAccessSize (size))
+    {
+      vfemError ("comparison size is outside the allocated range");
+      return 1;
+    }
+  if (size == 0)
+    {
+      return 0;
+    }
+  if (!record_ || record_->h_ptr == nullptr || record_->d_ptr == nullptr)
+    {
+      vfemError ("host and device pointers are not both available");
+      return 1;
+    }
+  const std::size_t bytes = checkedBytes (size);
+  if (bytes == 0)
+    {
+      return 1;
+    }
+  const auto *host_ptr
+      = static_cast<const unsigned char *> (record_->h_ptr) + byte_offset_;
+  const auto *device_ptr
+      = static_cast<const unsigned char *> (record_->d_ptr) + byte_offset_;
+  if (host_ptr == device_ptr)
+    {
+      return 0;
+    }
+  auto host_copy = std::make_unique_for_overwrite<unsigned char[]> (bytes);
+  if (!MemoryManager::get ().copy (host_copy.get (), MemType::HOST, device_ptr,
+                                   record_->d_mt, bytes))
+    {
+      return 1;
+    }
+  return std::memcmp (host_ptr, host_copy.get (), bytes);
 }
 
 } // namespace vfem
