@@ -92,5 +92,4 @@ memClassContainsType (MemoryClass mc, MemType type)
     }
   return false;
 }
-
-}
+} // namespace vfem
