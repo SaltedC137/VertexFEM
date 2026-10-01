@@ -1399,8 +1399,12 @@ Memory<T>::copyFrom (const Memory &other, int size)
       return;
     }
   const T *source = other.read (MemoryClass::HOST, size);
+  if (source == nullptr)
+    {
+      return;
+    }
   T *destination = write (MemoryClass::HOST, size);
-  if (source != nullptr && destination != nullptr)
+  if (destination != nullptr)
     {
       std::memmove (destination, source,
                     static_cast<std::size_t> (size) * sizeof (T));
