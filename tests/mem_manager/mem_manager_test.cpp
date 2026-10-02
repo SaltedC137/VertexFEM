@@ -790,7 +790,6 @@ testIgnoredCopyFailurePreservesDestination ()
   CHECK (!destination.hostIsValid () && destination.deviceIsValid ());
   checkData (destination.read (MemoryClass::DEVICE, 2), latest_device);
 }
-
 }
 
 int
