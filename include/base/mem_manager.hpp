@@ -336,14 +336,15 @@ public:
                     bool valid_device = true);
   inline void makeAlias (const Memory &base, int offset, int size);
 
-  inline T &operator[] (int index) noexcept;
-  inline const T &operator[] (int index) const noexcept;
+  inline T &operator[] (int index);
+  inline const T &operator[] (int index) const;
 
-  operator T *() noexcept;
-  operator const T *() const noexcept;
+  operator T *();
+  operator const T *();
+  operator const T *() const;
 
-  template <typename U> inline explicit operator U *() noexcept;
-  template <typename U> inline explicit operator const U *() const noexcept;
+  template <typename U> inline explicit operator U *();
+  template <typename U> inline explicit operator const U *() const;
 
   void
   release () noexcept
@@ -454,7 +455,7 @@ private:
 
   [[nodiscard]] inline static std::size_t checkedBytes (int size);
   [[nodiscard]] inline bool validAccessSize (int size) const;
-  [[nodiscard]] inline MemorySide sideFor (MemoryClass mc) const;
+  [[nodiscard]] inline bool sideFor (MemoryClass mc, MemorySide &side) const;
   [[nodiscard]] inline MemType typeFor (MemorySide side) const noexcept;
   [[nodiscard]] inline T *viewPointer (void *base) const noexcept;
   [[nodiscard]] inline const T *viewPointer (const void *base) const noexcept;
@@ -796,10 +797,9 @@ Memory<T>::validAccessSize (int size) const
 }
 
 template <DeviceCopyable T>
-MemorySide
-Memory<T>::sideFor (MemoryClass mc) const
+bool
+Memory<T>::sideFor (MemoryClass mc, MemorySide &side) const
 {
-  MemorySide side = MemorySide::HOST;
   switch (mc)
     {
     case MemoryClass::HOST:
@@ -814,19 +814,20 @@ Memory<T>::sideFor (MemoryClass mc) const
       if (h_mt != MemType::MANAGED || d_mt != MemType::MANAGED)
         {
           vfemError ("MANAGED access requested for non-managed memory");
-          return MemorySide::HOST;
+          return false;
         }
       side = useDevice () ? MemorySide::DEVICE : MemorySide::HOST;
       break;
     default:
       vfemError ("invalid memory class");
-      return MemorySide::HOST;
+      return false;
     }
   if (!memClassContainsType (mc, typeFor (side)))
     {
       vfemError ("memory class does not match memory type");
+      return false;
     }
-  return side;
+  return true;
 }
 
 template <DeviceCopyable T>
@@ -1160,7 +1161,6 @@ template <DeviceCopyable T>
 void
 Memory<T>::makeAlias (const Memory &base, int offset, int size)
 {
-
   if (offset < 0 || size < 0 || offset > base.capacity
       || size > base.capacity - offset)
     {
@@ -1172,7 +1172,6 @@ Memory<T>::makeAlias (const Memory &base, int offset, int size)
       vfemError ("cannot alias empty memory");
       return;
     }
-
   Memory replacement;
   replacement.record_ = base.record_;
   replacement.byte_offset_
@@ -1193,32 +1192,39 @@ Memory<T>::makeAlias (const Memory &base, int offset, int size)
 
 template <DeviceCopyable T>
 inline T &
-Memory<T>::operator[] (int index) noexcept
+Memory<T>::operator[] (int index)
 {
   return readWrite (MemoryClass::HOST, capacity)[index];
 }
 
 template <DeviceCopyable T>
 inline const T &
-Memory<T>::operator[] (int index) const noexcept
+Memory<T>::operator[] (int index) const
 {
-  return readWrite (MemoryClass::HOST, capacity)[index];
+  return read (MemoryClass::HOST, capacity)[index];
 }
 
 // *
 
 template <DeviceCopyable T>
 Memory<T>::
-operator T *() noexcept
+operator T *()
 {
   return readWrite (MemoryClass::HOST, capacity);
 }
 
 template <DeviceCopyable T>
 Memory<T>::
-operator const T *() const noexcept
+operator const T *()
 {
-  return readWrite (MemoryClass::HOST, capacity);
+  return read (MemoryClass::HOST, capacity);
+}
+
+template <DeviceCopyable T>
+Memory<T>::
+operator const T *() const
+{
+  return read (MemoryClass::HOST, capacity);
 }
 
 // U *
@@ -1226,17 +1232,24 @@ operator const T *() const noexcept
 template <DeviceCopyable T>
 template <typename U>
 inline Memory<T>::
-operator U *() noexcept
+operator U *()
 {
-  return reinterpret_cast<U *> (h_ptr);
+  if constexpr (std::is_const_v<U>)
+    {
+      return reinterpret_cast<U *> (read (MemoryClass::HOST, capacity));
+    }
+  else
+    {
+      return reinterpret_cast<U *> (readWrite (MemoryClass::HOST, capacity));
+    }
 }
 
 template <DeviceCopyable T>
 template <typename U>
 inline Memory<T>::
-operator const U *() const noexcept
+operator const U *() const
 {
-  return reinterpret_cast<U *> (h_ptr);
+  return reinterpret_cast<const U *> (read (MemoryClass::HOST, capacity));
 }
 
 template <DeviceCopyable T>
@@ -1316,7 +1329,11 @@ Memory<T>::readWrite (MemoryClass mc, int size)
       vfemError ("cannot access empty memory");
       return nullptr;
     }
-  const MemorySide side = sideFor (mc);
+  MemorySide side;
+  if (!sideFor (mc, side))
+    {
+      return nullptr;
+    }
   void *base
       = MemoryManager::get ().access (*record_, side, AccessMode::READ_WRITE);
   refreshView ();
@@ -1341,7 +1358,11 @@ Memory<T>::read (MemoryClass mc, int size) const
       vfemError ("cannot access empty memory");
       return nullptr;
     }
-  const MemorySide side = sideFor (mc);
+  MemorySide side;
+  if (!sideFor (mc, side))
+    {
+      return nullptr;
+    }
   void *base
       = MemoryManager::get ().access (*record_, side, AccessMode::READ_ONLY);
   refreshView ();
@@ -1376,7 +1397,11 @@ Memory<T>::write (MemoryClass mc, int size)
     }
   const AccessMode mode
       = whole_record ? AccessMode::WRITE_ONLY : AccessMode::READ_WRITE;
-  const MemorySide side = sideFor (mc);
+  MemorySide side;
+  if (!sideFor (mc, side))
+    {
+      return nullptr;
+    }
   void *base = MemoryManager::get ().access (*record_, side, mode);
   refreshView ();
   return viewPointer (base);
