@@ -21,8 +21,10 @@ CMakeFiles/
 # Clangd server cache
 *.cache*
 
-#vscode settings
+#text editor settings
 /.vscode/
+/.qtcreator/
+/.idea/
 
 # Backup files
 *~
