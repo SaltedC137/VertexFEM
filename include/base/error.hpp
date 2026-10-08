@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <iomanip> // IWYU pragma: keep
 #include <source_location>
 #include <sstream>
 #include <stdexcept>
@@ -108,15 +109,17 @@ vfemWarning (std::string_view message = {},
 
 } // namespace vfem
 
+// NOLINTBEGIN(bugprone-macro-parentheses)
 #define VFEM_DETAIL_MESSAGE(prefix, msg, fn)                                  \
   do                                                                          \
     {                                                                         \
       std::ostringstream vfemMsgStream;                                       \
       vfemMsgStream << std::setprecision (16) << std::scientific;             \
-      vfemMsgStream << (prefix) << (msg);                                     \
+      vfemMsgStream << (prefix) << msg;                                       \
       fn (vfemMsgStream.str (), std::source_location::current ());            \
     }                                                                         \
   while (false)
+// NOLINTEND(bugprone-macro-parentheses)
 
 #define VFEM_ABORT(msg)                                                       \
   VFEM_DETAIL_MESSAGE ("VFEM abort: ", msg, ::vfem::vfemError)

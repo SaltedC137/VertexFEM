@@ -15,6 +15,7 @@ package.json
 *.o.tmp
 
 # CMake generated files
+CMakeLists.txt.user
 CMakeCache.txt
 CMakeFiles/
 

@@ -1,4 +1,10 @@
-#pragma once
+// MIX
+#if (defined(VFEM_USE_CUDA) && defined(__CUDACC__)) || \
+    (defined(MFEM_USE_HIP) && defined(__HIP__))
+#define VFEM_HOST_DEVICE __host__ __device__
+#else
+#define VFEM_HOST_DEVICE
+#endif
 
 // GPU
 #if defined(__CUDACC__)
