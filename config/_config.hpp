@@ -1,25 +1,17 @@
 // MIX
-#if (defined(VFEM_USE_CUDA) && defined(__CUDACC__)) || \
-    (defined(MFEM_USE_HIP) && defined(__HIP__))
+#if defined(__CUDACC__) || defined(__HIP__) || defined(__HIPCC__)
 #define VFEM_HOST_DEVICE __host__ __device__
+#define VFEM_DEVICE __device__
+#define VFEM_HOST __host__
 #else
 #define VFEM_HOST_DEVICE
+#define VFEM_DEVICE
+#define VFEM_HOST
 #endif
 
-// GPU
-#if defined(__CUDACC__)
-#define VFEM_HOST_DEVICE __host__ __device__
-#define VFEM_DEVICE __device__
-#define VFEM_HOST __host__
-
-// HIP
-#elif defined(__HIP__)
-#define VFEM_HOST_DEVICE __host__ __device__
-#define VFEM_DEVICE __device__
-#define VFEM_HOST __host__
 
 // SYCL
-#elif defined(__SYCL_DEVICE_ONLY__)
+#if defined(__SYCL_DEVICE_ONLY__)
 #define VFEM_HOST_DEVICE [[sycl::device]]
 #define VFEM_DEVICE [[sycl::device]]
 #define VFEM_HOST [[sycl::host]]

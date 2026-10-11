@@ -49,9 +49,24 @@ target_include_directories(vertexfem
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/config>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+
+file(GLOB_RECURSE VFEM_INCLUDE_ENTRIES
+  LIST_DIRECTORIES true
+  CONFIGURE_DEPENDS
+  "${PROJECT_SOURCE_DIR}/include/*"
+)
+
+foreach(VFEM_INCLUDE_ENTRY IN LISTS VFEM_INCLUDE_ENTRIES)
+  if(IS_DIRECTORY "${VFEM_INCLUDE_ENTRY}")
+    target_include_directories(vertexfem PRIVATE
+      "${VFEM_INCLUDE_ENTRY}"
+    )
+  endif()
+endforeach()
+
 target_compile_features(vertexfem PUBLIC cxx_std_20)
 
-option(VFEM_USE_CUDA "Enable CUDA backend" OFF)
+option(VFEM_USE_CUDA "Enable CUDA backend" ON)
 
 if(VFEM_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)

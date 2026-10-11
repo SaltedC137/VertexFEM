@@ -58,5 +58,5 @@ TAGS
 *.a
 /bin/
 
-
-
+# bash scripts 
+clear.sh

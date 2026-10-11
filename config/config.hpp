@@ -89,8 +89,8 @@ inline constexpr int VFEM_SKIP_RETURN_VALUE = 242;
 #endif
 #endif
 
-#ifdef VFEM_USE_GPU
-#include <cuda_runtime.h>
+#ifdef VFEM_USE_CUDA
+#include <cuda_runtime_api.h>
 #endif
 
 #ifdef VFEM_USE_HIP
