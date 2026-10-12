@@ -101,7 +101,6 @@ operator* (MemoryClass lhs, MemoryClass rhs)
   return std::max (lhs, rhs);
 }
 
-
 void
 memoryPrintFlags (unsigned flags) noexcept
 {

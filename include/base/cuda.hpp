@@ -14,7 +14,7 @@
 
 #define VFEM_CUDA_BLOCKS 256
 
-#define VFEM_GPU_CHECK(x)                                                     \
+#define VFEM_GPU_CHECK_(x)                                                    \
   do                                                                          \
     {                                                                         \
       cudaError_t vfem_err_internal_var_name = (x);                           \
@@ -63,7 +63,6 @@ VFEM_EXPORT void cudaFreePinned (void *ptr,
 [[nodiscard]] VFEM_EXPORT bool cudaCopyDtoD (void *dst, const void *src,
                                              std::size_t bytes);
 
-
 [[nodiscard]] VFEM_EXPORT bool cudaStreamSync (cudaStream_t stream = nullptr);
 [[nodiscard]] VFEM_EXPORT bool cudaDeviceSync ();
 [[nodiscard]] VFEM_EXPORT bool cudaDeviceCount (int &count);
@@ -107,7 +106,9 @@ makeCudaPinnedMemory (std::size_t bytes, std::size_t alignment = 64)
 {
   return CudaPinnedMemory (cudaAllocPin (bytes, alignment));
 }
-
 }
+
+#define VFEM_GPU_CHECK(expr)                                                  \
+  (::vfem::cudaCheck ((expr), #expr, std::source_location::current ()))
 
 #endif

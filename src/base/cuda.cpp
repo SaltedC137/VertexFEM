@@ -1,5 +1,7 @@
 
 #include "cuda.hpp"
+#include <cstdint>
+#include <cstdlib>
 #include <source_location>
 
 #ifdef VFEM_USE_CUDA
@@ -52,10 +54,80 @@ struct AllocationDeleter
   }
 };
 
+template <typename Allocator>
+void *
+allocateMemory (std::size_t bytes, std::size_t alignment, Allocator allocator,
+                FreeFunc release, const char *operation)
+{
+  if (bytes == 0)
+    {
+      return nullptr;
+    }
+  if (!std::has_single_bit (alignment) || alignment > 256)
+    {
+      (void)cudaCheck (cudaErrorInvalidValue, "unsupported CUDA alignment");
+      return nullptr;
+    }
+  void *ptr = nullptr;
+  if (!cudaCheck (allocator (&ptr, bytes), operation))
+    {
+      return nullptr;
+    }
+  std::unique_ptr<void, AllocationDeleter> owner (ptr, { release });
+  if (ptr == nullptr
+      || reinterpret_cast<std::uintptr_t> (ptr) % alignment != 0)
+    {
+      owner.reset ();
+      (void)cudaCheck (cudaErrorInvalidValue,
+                       "CUDA allocation does not satisfy requested alignment");
+      return nullptr;
+      return owner.release ();
+    }
+}
 
+void
+checkRelease (cudaError_t status, const char *operation) noexcept
+{
+  if (status != cudaSuccess)
+    {
+      std::fprintf (stderr, "%s failed: CUDA error %d: %s\n", operation,
+                    static_cast<int> (status), cudaGetErrorString (status));
+      std::abort ();
+    }
+}
 
+// copyMemory is a wrapper around cudaMemcpy that checks for errors and reports
+// them.
+
+bool
+copyMemory (void *dst, const void *src, std::size_t bytes, cudaMemcpyKind kind)
+{
+  if (bytes == 0)
+    {
+      return true;
+    }
+  if (dst == nullptr || src == nullptr)
+    {
+      return cudaCheck (cudaErrorInvalidValue, "null CUDA copy pointers");
+    }
+  if (dst != src)
+    {
+      const auto dst_ptr = reinterpret_cast<std::uintptr_t> (dst);
+      const auto src_ptr = reinterpret_cast<std::uintptr_t> (src);
+      const auto distance
+          = dst_ptr < src_ptr ? src_ptr - dst_ptr : dst_ptr - src_ptr;
+
+      if (distance < bytes)
+        {
+          return cudaCheck (cudaErrorInvalidValue, "overlapping CUDA copy");
+        }
+      if (!VFEM_GPU_CHECK (cudaMemcpyAsync (dst, src, bytes, kind, nullptr)))
+        {
+        }
+    }
+  return cudaStreamSync ();
+}
 
 }
 }
-
 #endif
