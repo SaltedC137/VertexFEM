@@ -81,7 +81,6 @@ allocateMemory (std::size_t bytes, std::size_t alignment, Allocator allocator,
       (void)cudaCheck (cudaErrorInvalidValue,
                        "CUDA allocation does not satisfy requested alignment");
       return nullptr;
-      return owner.release ();
     }
   return owner.release ();
 }
