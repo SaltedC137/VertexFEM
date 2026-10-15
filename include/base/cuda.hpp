@@ -1,7 +1,7 @@
 #ifndef VFEM_CUDA_HPP
 #define VFEM_CUDA_HPP
 
-#include "config.hpp"
+#include "config.hpp" // IWYU pragma: keep
 
 #ifdef VFEM_USE_CUDA
 #include <cuda_runtime_api.h>
