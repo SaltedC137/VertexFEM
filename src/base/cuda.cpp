@@ -83,6 +83,7 @@ allocateMemory (std::size_t bytes, std::size_t alignment, Allocator allocator,
       return nullptr;
       return owner.release ();
     }
+  return owner.release ();
 }
 
 void
@@ -123,11 +124,105 @@ copyMemory (void *dst, const void *src, std::size_t bytes, cudaMemcpyKind kind)
         }
       if (!VFEM_GPU_CHECK (cudaMemcpyAsync (dst, src, bytes, kind, nullptr)))
         {
+          cudaMemcpyAsync (dst, src, bytes, kind, nullptr);
         }
     }
   return cudaStreamSync ();
 }
+} // namespace
 
+// cuda allocation functions
+void *
+cudaAllocDev (std::size_t bytes, std::size_t alignment)
+{
+  return allocateMemory (
+      bytes, alignment, [] (void **ptr, std::size_t size)
+        { return cudaMalloc (ptr, size); }, cudaFreeDevice, "cudaMalloc");
 }
+
+void *
+cudaAllocMan (std::size_t bytes, std::size_t alignment)
+{
+  return allocateMemory (
+      bytes, alignment, [] (void **ptr, std::size_t size)
+        { return cudaMallocManaged (ptr, size, cudaMemAttachGlobal); },
+      cudaFreeDevice, "cudaMallocManaged");
+}
+
+void *
+cudaAllocPin (std::size_t bytes, std::size_t alignment)
+{
+  return allocateMemory (
+      bytes, alignment, [] (void **ptr, std::size_t size)
+        { return cudaHostAlloc (ptr, size, cudaHostAllocDefault); },
+      cudaFreePinned, "cudaHostAlloc");
+}
+
+void
+cudaFreeDevice (void *ptr, std::size_t /*unused*/) noexcept
+{
+  if (ptr != nullptr)
+    {
+      checkRelease (cudaFree (ptr), "cudaFree");
+    }
+}
+
+void
+cudaFreePinned (void *ptr, std::size_t /*unused*/) noexcept
+{
+  if (ptr != nullptr)
+    {
+      checkRelease (cudaFreeHost (ptr), "cudaFreeHost");
+    }
+}
+
+bool
+cudaCopyHtoD (void *dst, const void *src, std::size_t bytes)
+{
+  return copyMemory (dst, src, bytes, cudaMemcpyHostToDevice);
+}
+
+bool
+cudaCopyDtoH (void *dst, const void *src, std::size_t bytes)
+{
+  return copyMemory (dst, src, bytes, cudaMemcpyDeviceToHost);
+}
+
+bool
+cudaCopyDtoD (void *dst, const void *src, std::size_t bytes)
+{
+  return copyMemory (dst, src, bytes, cudaMemcpyDeviceToDevice);
+}
+
+bool
+cudaStreamSync (cudaStream_t stream)
+{
+  return VFEM_GPU_CHECK (cudaStreamSynchronize (stream));
+}
+
+bool
+cudaDeviceSync ()
+{
+  return VFEM_GPU_CHECK (cudaDeviceSynchronize ());
+}
+
+bool
+cudaDeviceCount (int &count)
+{
+  int result = 0;
+  if (!VFEM_GPU_CHECK (cudaGetDeviceCount (&result)))
+    {
+      return false;
+    }
+  count = result;
+  return true;
+}
+
+bool
+cudaSetDevice (int device)
+{
+  return VFEM_GPU_CHECK (::cudaSetDevice (device));
+}
+
 }
 #endif
