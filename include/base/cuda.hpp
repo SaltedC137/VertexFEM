@@ -3,6 +3,7 @@
 
 #include "config.hpp"
 
+#ifdef VFEM_USE_CUDA
 #include <cuda_runtime_api.h>
 #include <memory>
 #include <source_location>
@@ -86,27 +87,29 @@ struct CudaPinnedDeleter
   }
 };
 
-using CudaDeviceMemory = std::unique_ptr<void, CudaDeviceDeleter>;
-using CudaPinnedMemory = std::unique_ptr<void, CudaPinnedDeleter>;
+using cudaDeviceMemory = std::unique_ptr<void, CudaDeviceDeleter>;
+using cudaPinnedMemory = std::unique_ptr<void, CudaPinnedDeleter>;
 
-[[nodiscard]] inline CudaDeviceMemory
+[[nodiscard]] inline cudaDeviceMemory
 makeCudaDeviceMemory (std::size_t bytes, std::size_t alignment = 256)
 {
-  return CudaDeviceMemory (cudaAllocDev (bytes, alignment));
+  return cudaDeviceMemory (cudaAllocDev (bytes, alignment));
 }
 
-[[nodiscard]] inline CudaDeviceMemory
+[[nodiscard]] inline cudaDeviceMemory
 makeCudaManagedMemory (std::size_t bytes, std::size_t alignment = 256)
 {
-  return CudaDeviceMemory (cudaAllocMan (bytes, alignment));
+  return cudaDeviceMemory (cudaAllocMan (bytes, alignment));
 }
 
-[[nodiscard]] inline CudaPinnedMemory
+[[nodiscard]] inline cudaPinnedMemory
 makeCudaPinnedMemory (std::size_t bytes, std::size_t alignment = 64)
 {
-  return CudaPinnedMemory (cudaAllocPin (bytes, alignment));
+  return cudaPinnedMemory (cudaAllocPin (bytes, alignment));
 }
 }
+
+#endif
 
 #define VFEM_GPU_CHECK(expr)                                                  \
   (::vfem::cudaCheck ((expr), #expr, std::source_location::current ()))

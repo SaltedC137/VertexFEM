@@ -60,3 +60,4 @@ TAGS
 
 # bash scripts 
 clear.sh
+format_check.sh

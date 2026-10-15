@@ -9,7 +9,6 @@
 #define VFEM_HOST
 #endif
 
-
 // SYCL
 #if defined(__SYCL_DEVICE_ONLY__)
 #define VFEM_HOST_DEVICE [[sycl::device]]

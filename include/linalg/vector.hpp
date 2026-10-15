@@ -1,38 +1,13 @@
 #pragma once
 
+namespace vfem
+{
 
-
-namespace vfem {
-
-class Vector {
+class Vector
+{
 
 private:
-
-
-
 public:
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 };
 
 } // namespace vfem
