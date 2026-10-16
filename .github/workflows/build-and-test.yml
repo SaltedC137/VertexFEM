@@ -69,7 +69,7 @@ jobs:
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.configuration }} \
             -DBUILD_TESTING=ON \
-            -DVFEM_USE_GPU=OFF \
+            -DVFEM_USE_CUDA=OFF \
             -DVERTEXFEM_USE_DOUBLE=${{ matrix.double }} \
             -DENABLE_ASAN=${{ matrix.asan }} \
             "${compiler_options[@]}"
