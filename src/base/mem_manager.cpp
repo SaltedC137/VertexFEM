@@ -93,8 +93,6 @@ memClassContainsType (MemoryClass mc, MemType type)
   return false;
 }
 
-// MemoryClass operator* (MemoryClass mc1, MemoryClass mc2);
-
 inline MemoryClass
 operator* (MemoryClass lhs, MemoryClass rhs)
 {

@@ -9,6 +9,17 @@
 #include <stdexcept>
 #include <vector>
 
+#if defined(__SANITIZE_ADDRESS__)                                             \
+    || (defined(__has_feature) && __has_feature(address_sanitizer))
+extern "C" const char *
+// NOLINTNEXTLINE(bugprone-reserved-identifier, readability-identifier-naming)
+__lsan_default_suppressions ()
+{
+  return "leak:libcuda.so\n"
+         "leak:libcudart.so\n";
+}
+#endif
+
 using namespace vfem;
 
 namespace

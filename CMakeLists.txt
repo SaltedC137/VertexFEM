@@ -29,6 +29,15 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
   endif()
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(STATUS "Config : Debug build")
+    add_compile_options(-g -O0)
+  elseif(MSVC)
+    add_compile_options(/Zi /Od)
+  endif()
+endif()
+
 file(GLOB VERTEXFEM_SOURCES CONFIGURE_DEPENDS
   src/asm/*.cpp
   src/base/*.cpp
@@ -66,7 +75,7 @@ endforeach()
 
 target_compile_features(vertexfem PUBLIC cxx_std_20)
 
-option(VFEM_USE_CUDA "Enable CUDA backend" ON)
+option(VFEM_USE_CUDA "Enable CUDA backend" OFF)
 
 if(VFEM_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
@@ -129,7 +138,7 @@ install(EXPORT vertexfem-targets
 # Standard CMake switch (also probed by super-projects/IDEs via BUILD_TESTING).
 option(BUILD_TESTING "Build the testing tree" OFF)
 
-set(ASAN_ENV "ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:symbolize=1")
+set(ASAN_ENV "ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:symbolize=1:protect_shadow_gap=0")
 
 if(BUILD_TESTING)
   enable_testing()

@@ -61,3 +61,4 @@ TAGS
 # bash scripts 
 clear.sh
 format_check.sh
+build-debug.sh

@@ -213,8 +213,8 @@ isDeviceMemory (MemType type) noexcept
 
 VFEM_EXPORT MemType getMemType (MemoryClass mc, int index = 0);
 VFEM_EXPORT bool memClassContainsType (MemoryClass mc, MemType type);
-VFEM_EXPORT MemoryClass operator* (MemoryClass lhs, MemoryClass rhs);
 VFEM_EXPORT void memoryPrintFlags (unsigned flags) noexcept;
+inline MemoryClass operator* (MemoryClass lhs, MemoryClass rhs);
 
 /// Class used by VFEM to manage memory allocations and deallocations across
 /// different memory types.
