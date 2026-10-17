@@ -49,7 +49,7 @@ cmake --build build
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `VERTEXFEM_USE_DOUBLE` | `ON` | Use double precision; disable for single precision |
+| `VFEM_USE_DOUBLE` | `ON` | Use double precision; disable for single precision |
 | `VERTEXFEM_BUILD_TESTS` | `ON` | Build the test / benchmark harness |
 
 ## Project structure

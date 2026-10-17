@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.14...4.0.0)
 
 project(VertexFEM
   VERSION 0.1.0
@@ -6,16 +6,18 @@ project(VertexFEM
   LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard to use")
+set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "FORCE C++ standard requirement")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
+  
+# Include settings.cmake for build options 
+include("${CMAKE_CURRENT_SOURCE_DIR}/config/settings.cmake")
+  
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 file(MAKE_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 
-option(VERTEXFEM_USE_DOUBLE "Use double precision" ON)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -75,8 +77,6 @@ endforeach()
 
 target_compile_features(vertexfem PUBLIC cxx_std_20)
 
-option(VFEM_USE_CUDA "Enable CUDA backend" OFF)
-
 if(VFEM_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_CUDA)
@@ -84,8 +84,6 @@ if(VFEM_USE_CUDA)
   target_link_libraries(vertexfem PUBLIC CUDA::cudart)
   message(STATUS "Config : Enable CUDA backend")
 endif()
-
-option(VFEM_USE_HIP "Enable HIP backend" OFF)
 
 if(VFEM_USE_HIP)
   find_package(HIP REQUIRED)
@@ -95,14 +93,19 @@ if(VFEM_USE_HIP)
   message(STATUS "Config : Enable HIP backend")
 endif()
 
-if(VERTEXFEM_USE_DOUBLE)
+if(VFEM_USE_MPI)
+  find_package(MPI REQUIRED)
+  target_compile_definitions(vertexfem PUBLIC VFEM_USE_MPI)
+  target_include_directories(vertexfem PUBLIC ${MPI_INCLUDE_PATH})
+  target_link_libraries(vertexfem PUBLIC MPI::MPI_CXX)
+  message(STATUS "Config : Enable MPI backend")
+endif()
+
+if(VFEM_USE_DOUBLE)
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_DOUBLE)
 else()
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_SINGLE)
 endif()
-
-
-option(ENABLE_ASAN "Enable AddressSanitizer" ON)
 
 if(ENABLE_ASAN)
     if(MSVC)
@@ -115,7 +118,6 @@ if(ENABLE_ASAN)
         add_link_options(-fsanitize=address)
     endif()
 endif()
-
 
 add_subdirectory(config)
 target_sources(vertexfem PRIVATE ${VFEM_CONFIG_HEADERS})
@@ -133,10 +135,8 @@ install(EXPORT vertexfem-targets
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/vertexfem
 )
 
-
 # CTest configuration
 # Standard CMake switch (also probed by super-projects/IDEs via BUILD_TESTING).
-option(BUILD_TESTING "Build the testing tree" OFF)
 
 set(ASAN_ENV "ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:symbolize=1:protect_shadow_gap=0")
 
