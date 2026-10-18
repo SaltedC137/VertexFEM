@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.14...4.0.0)
 project(VertexFEM
   VERSION 0.1.0
   DESCRIPTION "Vertex-centered Finite Element Method library"
-  LANGUAGES CXX)
+  LANGUAGES C CXX) #C/C++
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard to use")
@@ -17,7 +17,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 file(MAKE_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
-
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
@@ -77,6 +76,7 @@ endforeach()
 
 target_compile_features(vertexfem PUBLIC cxx_std_20)
 
+# CUDA support
 if(VFEM_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_CUDA)
@@ -100,7 +100,7 @@ if(VFEM_USE_MPI)
     message(STATUS "Info : try to load Environment Modules")
     find_package(EnvModules)
     if(EnvModules_FOUND)
-      env_modules(load mpi/openmpi-x86_64)
+      env_module(load mpi/openmpi-x86_64)
       find_package(MPI COMPONENTS CXX)
     endif()
     if(NOT MPI_FOUND)
@@ -110,6 +110,26 @@ if(VFEM_USE_MPI)
   target_compile_definitions(vertexfem PUBLIC VFEM_USE_MPI)
   target_link_libraries(vertexfem PUBLIC MPI::MPI_CXX)
   message(STATUS "Config : Enable MPI backend")
+endif()
+
+if(VFEM_USE_OPENMP)
+  find_package(OpenMP COMPONENTS C CXX)
+  target_compile_definitions(vertexfem PUBLIC VFEM_USE_OPENMP)
+  target_link_libraries(vertexfem PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+if(VFEM_USE_HYPRE)
+  # HYPRE was built with OpenMP; its exported target references
+  # OpenMP::OpenMP_C, which must exist before HYPRETargets.cmake loads.
+  find_package(HYPRE CONFIG QUIET REQUIRED)
+  if(NOT TARGET HYPRE::HYPRE)
+    message(FATAL_ERROR
+      "The selected HYPRE package does not export HYPRE::HYPRE")
+  endif()
+  set(VFEM_HYPRE_VERSION "${HYPRE_VERSION}")
+  target_compile_definitions(vertexfem PUBLIC VFEM_USE_HYPRE)
+  target_link_libraries(vertexfem PUBLIC HYPRE::HYPRE)
+  message(STATUS "Config: Enable HYPRE ${VFEM_HYPRE_VERSION}")
 endif()
 
 if(VFEM_USE_DOUBLE)
@@ -148,7 +168,6 @@ install(EXPORT vertexfem-targets
 
 # CTest configuration
 # Standard CMake switch (also probed by super-projects/IDEs via BUILD_TESTING).
-
 set(ASAN_ENV "ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:symbolize=1:protect_shadow_gap=0")
 
 if(BUILD_TESTING)

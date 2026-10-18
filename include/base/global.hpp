@@ -1,11 +1,12 @@
 #pragma once
 
-#include <streambuf>
 #ifndef VFEM_GLOBAL_HPP
 #define VFEM_GLOBAL_HPP
 
 #include "config.hpp" // IWYU pragma: keep
 #include <iostream>
+#include <streambuf>
+#include <string>
 
 #ifdef VFEM_USE_MPI
 #include <mpi.h>
@@ -17,10 +18,10 @@ namespace vfem
 class OutStream : public std::ostream
 {
 protected:
-  std::streambuf *m_rdbuf;
-  std::ostream *m_tie;
+  std::streambuf *m_rdbuf{nullptr};
+  std::ostream *m_tie{nullptr};
 
-  void Init ();
+  void init ();
 
 public:
   explicit OutStream (std::ostream &stream);
@@ -38,12 +39,6 @@ public:
   void disable ();
 
   [[nodiscard]] bool isEnabled () const noexcept;
-
-private:
-  std::streambuf *stream_buffer_{ nullptr };
-  std::ostream *tied_stream_{ nullptr };
-
-  void resetState ();
 };
 
 // for the library to use standard output and error streams
@@ -57,8 +52,8 @@ extern VFEM_EXPORT OutStream err;
 // MPI communicator for parallel execution
 #ifdef VFEM_USE_MPI
 
-inline MPI_Comm getMPIComm ();
-inline void setMPIComm (MPI_Comm communicator);
+MPI_Comm getGlobalMPIComm ();
+void setGlobalMPIComm (MPI_Comm communicator);
 
 #endif
 
