@@ -18,8 +18,8 @@ namespace vfem
 class OutStream : public std::ostream
 {
 protected:
-  std::streambuf *m_rdbuf{nullptr};
-  std::ostream *m_tie{nullptr};
+  std::streambuf *m_rdbuf{ nullptr };
+  std::ostream *m_tie{ nullptr };
 
   void init ();
 
@@ -29,10 +29,10 @@ public:
 
   // reload the operator= and copy constructor to delete them, so that the
   // stream cannot be copied or moved
-  OutStream (const OutStream &) = delete;
+  OutStream (const OutStream &)            = delete;
   OutStream &operator= (const OutStream &) = delete;
-  OutStream (OutStream &&) = delete;
-  OutStream &operator= (OutStream &&) = delete;
+  OutStream (OutStream &&)                 = delete;
+  OutStream &operator= (OutStream &&)      = delete;
 
   void setStream (std::ostream &os);
   void enable ();
@@ -47,7 +47,7 @@ extern VFEM_EXPORT OutStream err;
 
 [[nodiscard]] std::string makeParFilename (const std::string &prefix, int id_,
                                            const std::string &suffix = {},
-                                           int width = 6);
+                                           int width                 = 6);
 
 // MPI communicator for parallel execution
 #ifdef VFEM_USE_MPI

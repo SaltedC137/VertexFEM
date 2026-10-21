@@ -223,5 +223,5 @@ cudaSetDevice (int device)
   return VFEM_GPU_CHECK (::cudaSetDevice (device));
 }
 
-}
+} // namespace vfem
 #endif

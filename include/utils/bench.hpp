@@ -71,13 +71,13 @@ tscFreqMhz ()
       // Last resort: calibrate against high_resolution_clock (5 x 20 ms)
       using namespace std::chrono;
       constexpr int cal_ms = 20;
-      constexpr int N = 5;
-      double sum = 0.0;
+      constexpr int N      = 5;
+      double sum           = 0.0;
       for (int i = 0; i < N; ++i)
         {
           _mm_lfence ();
           uint64_t tsc0 = __rdtsc ();
-          auto t0 = high_resolution_clock::now ();
+          auto t0       = high_resolution_clock::now ();
           std::this_thread::sleep_for (milliseconds (cal_ms));
           auto t1 = high_resolution_clock::now ();
           _mm_lfence ();

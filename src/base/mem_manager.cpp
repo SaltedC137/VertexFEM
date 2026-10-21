@@ -37,8 +37,8 @@ MemoryRecord::~MemoryRecord () noexcept
           h_deallocate (h_ptr, h_alignment);
         }
     }
-  h_ptr = nullptr;
-  d_ptr = nullptr;
+  h_ptr  = nullptr;
+  d_ptr  = nullptr;
   owns_d = false;
   owns_h = false;
 }
@@ -122,7 +122,7 @@ MemoryManager::get ()
 
 MemoryManager::MemoryManager ()
 {
-  auto &backend = backends_[typeIndex (MemType::HOST)];
+  auto &backend    = backends_[typeIndex (MemType::HOST)];
   backend.allocate = [] (std::size_t bytes, std::size_t alignment) -> void *
     { return ::operator new (bytes, std::align_val_t{ alignment }); };
   backend.deallocate = [] (void *ptr, std::size_t alignment) noexcept
@@ -264,12 +264,12 @@ MemoryManager::allocate (MemoryRecord &record, MemorySide side)
   if (side == MemorySide::HOST)
     {
       record.h_deallocate = backend.deallocate;
-      record.owns_h = true;
+      record.owns_h       = true;
     }
   else
     {
       record.d_deallocate = backend.deallocate;
-      record.owns_d = true;
+      record.owns_d       = true;
     }
 }
 
@@ -377,8 +377,8 @@ MemoryManager::deleteDevice (MemoryRecord &record, bool copy_to_host)
     {
       record.d_deallocate (record.d_ptr, record.d_alignment);
     }
-  record.d_ptr = nullptr;
-  record.owns_d = false;
+  record.d_ptr        = nullptr;
+  record.owns_d       = false;
   record.d_deallocate = nullptr;
   if (record.state == MemoryState::DEVICE_VALID)
     {

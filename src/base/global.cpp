@@ -19,7 +19,7 @@ namespace
 std::mutex global_mpi_mutex;
 MPI_Comm global_mpi_communicator = MPI_COMM_WORLD;
 #endif
-}
+} // namespace
 
 OutStream::OutStream (std::ostream &stream) : std::ostream (stream.rdbuf ())
 {
@@ -63,7 +63,7 @@ OutStream::disable ()
       return;
     }
   m_rdbuf = rdbuf (nullptr);
-  m_tie = tie (nullptr);
+  m_tie   = tie (nullptr);
 }
 
 void

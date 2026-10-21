@@ -107,7 +107,7 @@ makeCudaPinnedMemory (std::size_t bytes, std::size_t alignment = 64)
 {
   return cudaPinnedMemory (cudaAllocPin (bytes, alignment));
 }
-}
+} // namespace vfem
 
 #endif
 

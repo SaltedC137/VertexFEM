@@ -38,13 +38,13 @@ runAllBenchmarks (int warmup, int iters)
           b.fn ();
           BENCH_DO_NOT_OPTIMIZE (0);
           uint64_t t1 = ticks ();
-          double ns = ticksToNs (t1 - t0);
+          double ns   = ticksToNs (t1 - t0);
           sum += ns;
           min = std::min (ns, min);
         }
       b.avg_ns = sum / (double)iters;
       b.min_ns = min;
-      b.iters = iters;
+      b.iters  = iters;
     }
 
   // print results

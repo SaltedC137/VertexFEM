@@ -14,5 +14,5 @@ option(VFEM_USE_HYPRE "Enable HYPRE" OFF)
 option(MFEM_USE_SIMD "Enable use of SIMD intrinsics" OFF)
 
 # Debugging options
-option(ENABLE_ASAN "Enable AddressSanitizer" ON)
+option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(BUILD_TESTING "Build the testing tree" ON)

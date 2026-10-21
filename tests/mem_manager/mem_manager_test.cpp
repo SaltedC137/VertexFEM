@@ -44,7 +44,7 @@ class ErrorActionGuard
 public:
   explicit ErrorActionGuard (ErrorAction action) { setErrorAction (action); }
   ~ErrorActionGuard () { setErrorAction (previous); }
-  ErrorActionGuard (const ErrorActionGuard &) = delete;
+  ErrorActionGuard (const ErrorActionGuard &)            = delete;
   ErrorActionGuard &operator= (const ErrorActionGuard &) = delete;
 };
 
@@ -55,7 +55,7 @@ class FailureGuard
 public:
   explicit FailureGuard (bool &failure) : flag (failure) { flag = true; }
   ~FailureGuard () { flag = false; }
-  FailureGuard (const FailureGuard &) = delete;
+  FailureGuard (const FailureGuard &)            = delete;
   FailureGuard &operator= (const FailureGuard &) = delete;
 };
 
@@ -193,14 +193,14 @@ captureFlags (const Memory<int> &memory)
 {
 #ifdef _WIN32
   constexpr auto descriptor = &_fileno;
-  constexpr auto duplicate = &_dup;
-  constexpr auto replace = &_dup2;
-  constexpr auto close = &_close;
+  constexpr auto duplicate  = &_dup;
+  constexpr auto replace    = &_dup2;
+  constexpr auto close      = &_close;
 #else
   constexpr auto descriptor = &fileno;
-  constexpr auto duplicate = &dup;
-  constexpr auto replace = &dup2;
-  constexpr auto close = &::close;
+  constexpr auto duplicate  = &dup;
+  constexpr auto replace    = &dup2;
+  constexpr auto close      = &::close;
 #endif
   std::FILE *file = std::tmpfile ();
   CHECK (file != nullptr);
@@ -209,7 +209,7 @@ captureFlags (const Memory<int> &memory)
   CHECK (saved >= 0);
   CHECK (replace (descriptor (file), descriptor (stderr)) >= 0);
   memory.printFlags ();
-  const int flush_result = std::fflush (stderr);
+  const int flush_result   = std::fflush (stderr);
   const int restore_result = replace (saved, descriptor (stderr));
   close (saved);
   CHECK_EQ (flush_result, 0);
@@ -318,8 +318,8 @@ testNestedAliasPartialWrites ()
   alias.makeAlias (base, 1, 4);
   nested.makeAlias (alias, 1, 2);
   int *ptr = nested.write (MemoryClass::DEVICE, 2);
-  ptr[0] = 30;
-  ptr[1] = 40;
+  ptr[0]   = 30;
+  ptr[1]   = 40;
   CHECK_EQ (host_to_device_copies, 1);
   CHECK_EQ (last_copy_bytes, initial.size () * sizeof (int));
   CHECK (!base.hostIsValid () && alias.deviceIsValid ());
@@ -345,7 +345,7 @@ testCopyConstructionAndAssignment ()
   base.useDevice (true);
   Memory<int> copy (base);
   auto assigned = makeMemory (2);
-  assigned = base;
+  assigned      = base;
   CHECK_EQ (host_counters.deallocations, 1);
   CHECK_EQ (copy.capaCity (), 4);
   CHECK (copy.useDevice () && assigned.useDevice ());
@@ -373,11 +373,11 @@ testMovesSwapAndReallocation ()
   CHECK_EQ (source.capaCity (), 0);
   CHECK (!source.ownsHostPtr ());
   auto target = makeMemory (2);
-  target = std::move (moved);
+  target      = std::move (moved);
   CHECK (moved.empty ());
   CHECK (target.useDevice ());
   CHECK_EQ (host_counters.deallocations, 1);
-  auto other = makeMemory (1);
+  auto other                            = makeMemory (1);
   other.write (MemoryClass::HOST, 1)[0] = 42;
   target.swap (other);
   CHECK_EQ (target.capaCity (), 1);
@@ -447,7 +447,7 @@ testCopiesAndOverlap ()
   auto source = makeMemory (6);
   const std::array initial{ 1, 2, 3, 4, 5, 6 };
   source.copyFromHost (initial.data (), 6);
-  auto destination = makeMemory (6);
+  auto destination                             = makeMemory (6);
   source.readWrite (MemoryClass::DEVICE, 6)[0] = 10;
   source.copyTo (destination, 6);
   checkData (destination, std::array{ 10, 2, 3, 4, 5, 6 });
@@ -743,11 +743,11 @@ testPrintFlagsUsesCurrentSharedState ()
   memory.copyFromHost (initial.data (), 3);
   ObservedMemory alias;
   alias.makeAlias (memory, 1, 2);
-  const unsigned cached_flags = alias.cachedFlags ();
+  const unsigned cached_flags                  = alias.cachedFlags ();
   memory.readWrite (MemoryClass::DEVICE, 3)[0] = 10;
   memory.useDevice (true);
   const int copy_count = host_to_device_copies + device_to_host_copies;
-  const auto output = captureFlags (memory);
+  const auto output    = captureFlags (memory);
   CHECK (output.find ("registered=1 owns_host=1 owns_device=1")
          != std::string::npos);
   CHECK (output.find ("owns_internal=1 use_device=1 alias=0")
@@ -790,7 +790,7 @@ testIgnoredCopyFailurePreservesDestination ()
   CHECK (!destination.hostIsValid () && destination.deviceIsValid ());
   checkData (destination.read (MemoryClass::DEVICE, 2), latest_device);
 }
-}
+} // namespace
 
 int
 main (int argc, char **argv)
@@ -834,9 +834,9 @@ main (int argc, char **argv)
         {
           continue;
         }
-      backend_counters = {};
+      backend_counters      = {};
       host_to_device_copies = device_to_host_copies = 0;
-      last_copy_bytes = 0;
+      last_copy_bytes                               = 0;
       std::cout << "[ RUN      ] " << test.name << '\n';
       try
         {

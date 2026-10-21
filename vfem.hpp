@@ -3,13 +3,4 @@
 #ifndef VFEM_HPP
 #define VFEM_HPP
 
-
-
-
-
-
-
-
-
-
 #endif

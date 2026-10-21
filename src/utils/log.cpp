@@ -27,9 +27,9 @@ LogLevel SystemLogLevel = LogLevel::INFO;
 LogMessage::LogMessage (LogLevel level, const char *file, int line)
     : level_ (level)
 {
-  auto now = std::chrono::system_clock::now ();
-  auto time_t_now = std::chrono::system_clock::to_time_t (now);
-  std::tm *tm_now = std::localtime (&time_t_now);
+  auto now              = std::chrono::system_clock::now ();
+  auto time_t_now       = std::chrono::system_clock::to_time_t (now);
+  std::tm *tm_now       = std::localtime (&time_t_now);
 
   const char *level_str = "UNKNOWN";
   const char *color_str = COLOR_RESET;

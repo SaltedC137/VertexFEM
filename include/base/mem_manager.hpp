@@ -68,10 +68,10 @@ operator<< (std::ostream &os, MemType type)
 }
 
 /// Static casts to 'int' and constexprs for MemType values
-constexpr int MemTypeSize = static_cast<int> (MemType::SIZE);
-constexpr int HostMemType = static_cast<int> (MemType::HOST);
-constexpr int HostMemTypeSize = static_cast<int> (MemType::DEVICE);
-constexpr int DeviceMemType = static_cast<int> (MemType::MANAGED);
+constexpr int MemTypeSize       = static_cast<int> (MemType::SIZE);
+constexpr int HostMemType       = static_cast<int> (MemType::HOST);
+constexpr int HostMemTypeSize   = static_cast<int> (MemType::DEVICE);
+constexpr int DeviceMemType     = static_cast<int> (MemType::MANAGED);
 constexpr int DeviceMemTypeSize = MemTypeSize - DeviceMemType;
 
 extern VFEM_EXPORT const char *MemTypeName[MemTypeSize];
@@ -240,8 +240,8 @@ struct MemoryRecord final
   bool owns_d{};
   MemoryState state{ MemoryState::EMPTY };
 
-  MemoryRecord () = default;
-  MemoryRecord (const MemoryRecord &) = delete;
+  MemoryRecord ()                                = default;
+  MemoryRecord (const MemoryRecord &)            = delete;
   MemoryRecord &operator= (const MemoryRecord &) = delete;
   ~MemoryRecord () noexcept;
 };
@@ -259,16 +259,16 @@ protected:
 #ifndef REGISTERED
     REGISTERED = 1 << 0,
 #endif
-    Registered = 1 << 0,
-    OWNS_HOST = 1 << 1,
+    Registered  = 1 << 0,
+    OWNS_HOST   = 1 << 1,
     OWNS_DEVICE = 1 << 2,
     OWNS_INTERNAL
     = 1 << 3, // Owns memory allocated internally by VFEM (not user-provided)
-    VALID_HOST = 1 << 4,
+    VALID_HOST   = 1 << 4,
     VALID_DEVICE = 1 << 5,
-    USE_DEVICE = 1 << 6, // Indicates that the device pointer should be used
-                         // for operations (e.g., when memory is mirrored)
-    ALIAS = 1 << 7,      // Pointer is an alias
+    USE_DEVICE   = 1 << 6, // Indicates that the device pointer should be used
+                           // for operations (e.g., when memory is mirrored)
+    ALIAS = 1 << 7,        // Pointer is an alias
   };
 
   /// Pointer to the memory. Not owned.
@@ -610,20 +610,20 @@ template <DeviceCopyable T>
 void
 Memory<T>::moveFrom (Memory &&other) noexcept
 {
-  h_ptr = other.h_ptr;
-  d_ptr = other.d_ptr;
-  capacity = other.capacity;
-  h_mt = other.h_mt;
-  d_mt = other.d_mt;
-  flags = other.flags;
-  record_ = std::move (other.record_);
-  byte_offset_ = other.byte_offset_;
+  h_ptr              = other.h_ptr;
+  d_ptr              = other.d_ptr;
+  capacity           = other.capacity;
+  h_mt               = other.h_mt;
+  d_mt               = other.d_mt;
+  flags              = other.flags;
+  record_            = std::move (other.record_);
+  byte_offset_       = other.byte_offset_;
 
-  other.h_ptr = nullptr;
-  other.d_ptr = nullptr;
-  other.capacity = 0;
+  other.h_ptr        = nullptr;
+  other.d_ptr        = nullptr;
+  other.capacity     = 0;
   other.byte_offset_ = 0;
-  other.flags = 0;
+  other.flags        = 0;
 }
 
 //============================================================================
@@ -646,12 +646,12 @@ Memory<T>::operator= (const Memory &other) noexcept
     {
       return *this;
     }
-  record_ = other.record_;
+  record_      = other.record_;
   byte_offset_ = other.byte_offset_;
-  capacity = other.capacity;
-  h_mt = other.h_mt;
-  d_mt = other.d_mt;
-  flags = (other.flags & USE_DEVICE) | ALIAS;
+  capacity     = other.capacity;
+  h_mt         = other.h_mt;
+  d_mt         = other.d_mt;
+  flags        = (other.flags & USE_DEVICE) | ALIAS;
   refreshView ();
   return *this;
 }
@@ -710,11 +710,11 @@ constexpr void
 Memory<T>::reset () noexcept
 {
   record_.reset ();
-  h_ptr = nullptr;
-  d_ptr = nullptr;
-  capacity = 0;
+  h_ptr        = nullptr;
+  d_ptr        = nullptr;
+  capacity     = 0;
   byte_offset_ = 0;
-  flags = 0;
+  flags        = 0;
 }
 
 template <DeviceCopyable T>
@@ -892,7 +892,7 @@ Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
       swap (replacement);
       return;
     }
-  auto record = std::make_shared<MemoryRecord> ();
+  auto record   = std::make_shared<MemoryRecord> ();
   record->bytes = checkedBytes (size);
   if (record->bytes == 0)
     {
@@ -909,10 +909,10 @@ Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
     {
       return;
     }
-  record->state = MemoryState::UNINITIALIZED;
-  replacement.record_ = std::move (record);
+  record->state        = MemoryState::UNINITIALIZED;
+  replacement.record_  = std::move (record);
   replacement.capacity = size;
-  replacement.flags = Registered | OWNS_HOST | OWNS_INTERNAL;
+  replacement.flags    = Registered | OWNS_HOST | OWNS_INTERNAL;
   replacement.refreshView ();
   swap (replacement);
 }
@@ -935,23 +935,23 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
   MemType device_mt;
   if (mt == MemType::MANAGED)
     {
-      host_mt = MemType::MANAGED;
+      host_mt   = MemType::MANAGED;
       device_mt = MemType::MANAGED;
     }
   else if (isDeviceMemory (mt))
     {
-      host_mt = MemType::HOST;
+      host_mt   = MemType::HOST;
       device_mt = mt;
     }
   else
     {
-      host_mt = mt;
+      host_mt   = mt;
       device_mt = MemType::DEVICE;
     }
 
-  T *host_ptr = isHostMemory (mt) ? ptr : nullptr;
-  T *device_ptr = isDeviceMemory (mt) ? ptr : nullptr;
-  const bool valid_host = isHostMemory (mt);
+  T *host_ptr             = isHostMemory (mt) ? ptr : nullptr;
+  T *device_ptr           = isDeviceMemory (mt) ? ptr : nullptr;
+  const bool valid_host   = isHostMemory (mt);
   const bool valid_device = isDeviceMemory (mt);
   if (size > 0 && ptr == nullptr)
     {
@@ -973,13 +973,13 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
       return;
     }
   const std::size_t bytes = checkedBytes (size);
-  auto record = std::make_shared<MemoryRecord> ();
+  auto record             = std::make_shared<MemoryRecord> ();
   // Set the record fields based on the provided parameters
   record->h_ptr = host_ptr;
   record->d_ptr = device_ptr;
   record->bytes = bytes;
-  record->h_mt = host_mt;
-  record->d_mt = device_mt;
+  record->h_mt  = host_mt;
+  record->d_mt  = device_mt;
   record->h_alignment
       = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
   record->d_alignment
@@ -1001,8 +1001,8 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
     }
   record->h_deallocate = host_deallocate;
   record->d_deallocate = device_deallocate;
-  record->owns_h = owns_host;
-  record->owns_d = owns_device;
+  record->owns_h       = owns_host;
+  record->owns_d       = owns_device;
   if (valid_host && valid_device)
     {
       record->state = MemoryState::SYNCHRONIZED;
@@ -1028,9 +1028,9 @@ Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
     {
       new_flags |= OWNS_DEVICE;
     }
-  replacement.record_ = std::move (record);
+  replacement.record_  = std::move (record);
   replacement.capacity = size;
-  replacement.flags = new_flags;
+  replacement.flags    = new_flags;
   replacement.refreshView ();
   swap (replacement);
 }
@@ -1093,12 +1093,12 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
       return;
     }
 
-  auto record = std::make_shared<MemoryRecord> ();
+  auto record   = std::make_shared<MemoryRecord> ();
   record->h_ptr = host_ptr;
   record->d_ptr = device_ptr;
   record->bytes = bytes;
-  record->h_mt = host_mt;
-  record->d_mt = device_mt;
+  record->h_mt  = host_mt;
+  record->d_mt  = device_mt;
   record->h_alignment
       = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
   record->d_alignment
@@ -1120,8 +1120,8 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
     }
   record->h_deallocate = host_deallocate;
   record->d_deallocate = device_deallocate;
-  record->owns_h = owns_host;
-  record->owns_d = owns_device;
+  record->owns_h       = owns_host;
+  record->owns_d       = owns_device;
 
   if (valid_host && valid_device)
     {
@@ -1150,8 +1150,8 @@ Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
       new_flags |= OWNS_DEVICE;
     }
 
-  replacement.flags = new_flags;
-  replacement.record_ = std::move (record);
+  replacement.flags    = new_flags;
+  replacement.record_  = std::move (record);
   replacement.capacity = size;
   replacement.refreshView ();
   swap (replacement);
@@ -1177,9 +1177,9 @@ Memory<T>::makeAlias (const Memory &base, int offset, int size)
   replacement.byte_offset_
       = base.byte_offset_ + static_cast<std::size_t> (offset) * sizeof (T);
   replacement.capacity = size;
-  replacement.h_mt = base.h_mt;
-  replacement.d_mt = base.d_mt;
-  replacement.flags = (base.flags & USE_DEVICE) | ALIAS;
+  replacement.h_mt     = base.h_mt;
+  replacement.d_mt     = base.d_mt;
+  replacement.flags    = (base.flags & USE_DEVICE) | ALIAS;
   replacement.refreshView ();
   swap (replacement);
 }
@@ -1506,7 +1506,7 @@ Memory<T>::syncAlias (const Memory &base, int alias_size) const
       return;
     }
   const std::size_t alias_bytes = checkedBytes (alias_size);
-  const std::size_t base_bytes = checkedBytes (base.capacity);
+  const std::size_t base_bytes  = checkedBytes (base.capacity);
   if ((alias_size > 0 && alias_bytes == 0)
       || (base.capacity > 0 && base_bytes == 0))
     {

@@ -24,10 +24,10 @@ enum class ErrorAction
   Ignore,
 };
 
-inline constexpr ErrorAction VFEM_ERROR_ABORT = ErrorAction::Abort;
-inline constexpr ErrorAction VFEM_ERROR_THROW = ErrorAction::Throw;
+inline constexpr ErrorAction VFEM_ERROR_ABORT           = ErrorAction::Abort;
+inline constexpr ErrorAction VFEM_ERROR_THROW           = ErrorAction::Throw;
 inline constexpr ErrorAction VFEM_ERROR_THROW_EXCEPTION = ErrorAction::Throw;
-inline constexpr ErrorAction VFEM_ERROR_ACTION_IGNORE = ErrorAction::Ignore;
+inline constexpr ErrorAction VFEM_ERROR_ACTION_IGNORE   = ErrorAction::Ignore;
 
 class ErrorException : public std::runtime_error
 {

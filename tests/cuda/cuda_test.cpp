@@ -32,7 +32,7 @@ class ErrorActionGuard
 public:
   explicit ErrorActionGuard (ErrorAction action) { setErrorAction (action); }
   ~ErrorActionGuard () { setErrorAction (previous); }
-  ErrorActionGuard (const ErrorActionGuard &) = delete;
+  ErrorActionGuard (const ErrorActionGuard &)            = delete;
   ErrorActionGuard &operator= (const ErrorActionGuard &) = delete;
 };
 
@@ -157,8 +157,8 @@ void
 testDeviceToDeviceCopy ()
 {
   constexpr std::size_t bytes = 128;
-  auto src = makeCudaDeviceMemory (bytes);
-  auto dst = makeCudaDeviceMemory (bytes);
+  auto src                    = makeCudaDeviceMemory (bytes);
+  auto dst                    = makeCudaDeviceMemory (bytes);
   CHECK (src.get () != nullptr);
   CHECK (dst.get () != nullptr);
 
