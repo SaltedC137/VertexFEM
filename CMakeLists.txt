@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14...4.0.0)
+cmake_minimum_required(VERSION 3.15...4.0.0)
 
 project(VertexFEM
   VERSION 0.1.0
@@ -121,7 +121,8 @@ endif()
 if(VFEM_USE_HYPRE)
   # HYPRE was built with OpenMP; its exported target references
   # OpenMP::OpenMP_C, which must exist before HYPRETargets.cmake loads.
-  find_package(HYPRE CONFIG QUIET REQUIRED)
+  # Load hypre-Openmpi-devel.x86_64 
+  find_package(HYPRE CONFIG REQUIRED)
   if(NOT TARGET HYPRE::HYPRE)
     message(FATAL_ERROR
       "The selected HYPRE package does not export HYPRE::HYPRE")
