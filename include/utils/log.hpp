@@ -15,8 +15,7 @@
 #include <iostream>
 #include <sstream>
 
-namespace ctl
-{
+namespace ctl {
 
 /**
  * @brief Enumeration of logging severity levels
@@ -24,14 +23,7 @@ namespace ctl
  *          DEBUG < INFO < WARNING < ERROR < FATAL
  *          Messages below the current SystemLogLevel threshold are suppressed.
  */
-enum class LogLevel
-{
-  DEBUG,
-  INFO,
-  WARNING,
-  ERROR,
-  FATAL
-};
+enum class LogLevel { DEBUG, INFO, WARNING, ERROR, FATAL };
 
 /**
  * @brief Global system log level threshold
@@ -47,8 +39,7 @@ extern LogLevel SystemLogLevel;
  *          Each message includes the log level, timestamp, source file, and
  * line number. For FATAL level messages, the program will abort after logging.
  */
-class LogMessage
-{
+class LogMessage {
 public:
   /**
    * @brief Construct a log message with metadata
@@ -58,7 +49,7 @@ public:
    * @details Initializes the message with timestamp and location info.
    *          The actual message content is written via the stream() method.
    */
-  LogMessage (LogLevel level, const char *file, int line);
+  LogMessage(LogLevel level, const char *file, int line);
 
   /**
    * @brief Destructor - outputs the log message
@@ -67,7 +58,7 @@ public:
    *          ERROR and FATAL messages go to stderr; others to stdout.
    *          FATAL messages trigger program abortion after logging.
    */
-  ~LogMessage ();
+  ~LogMessage();
 
   /**
    * @brief Get the output stream for writing message content
@@ -75,7 +66,7 @@ public:
    * @details Use this stream to append custom message content.
    *          Example: LOG(INFO) << "Value = " << x;
    */
-  std::ostream &stream ();
+  std::ostream &stream();
 
 private:
   LogLevel level_;            ///< The severity level of this message
@@ -88,10 +79,9 @@ private:
  *          that can be used in ternary operators. The operator& overload
  *          accepts the stream reference and discards it safely.
  */
-class FMessageVoidify
-{
+class FMessageVoidify {
 public:
-  FMessageVoidify () = default;
+  FMessageVoidify() = default;
 
   /**
    * @brief Consume the stream reference and return void
@@ -99,10 +89,7 @@ public:
    * @details This operator allows the LOG macro to work correctly
    *          in conditional expressions by converting the result to void.
    */
-  void
-  operator& (std::ostream &stream)
-  {
-  }
+  void operator&(std::ostream &stream) {}
 };
 
 /**
@@ -121,12 +108,12 @@ public:
  * LOG(FATAL) << "Critical failure, aborting";
  * @endcode
  */
-#define LOG(level)                                                            \
-  ((ctl::LogLevel::level < ctl::SystemLogLevel)                               \
-       ? (void)0                                                              \
-       : ctl::FMessageVoidify ()                                              \
-             & ctl::LogMessage (ctl::LogLevel::level, __FILE__, __LINE__)     \
-                   .stream ())
+#define LOG(level)                                                             \
+  ((ctl::LogLevel::level < ctl::SystemLogLevel)                                \
+       ? (void)0                                                               \
+       : ctl::FMessageVoidify() &                                              \
+             ctl::LogMessage(ctl::LogLevel::level, __FILE__, __LINE__)         \
+                 .stream())
 
 /**
  * @brief Conditional logging macro with severity-based filtering
@@ -143,13 +130,13 @@ public:
  * @endcode
  */
 
-#define LOG_IF(level, condition)                                              \
-  ((!(condition)) ? (void)0                                                   \
-   : (ctl::LogLevel::level < ctl::SystemLogLevel)                             \
-       ? (void)0                                                              \
-       : ctl::FMessageVoidify ()                                              \
-             & ctl::LogMessage (ctl::LogLevel::level, __FILE__, __LINE__)     \
-                   .stream ())
+#define LOG_IF(level, condition)                                               \
+  ((!(condition)) ? (void)0                                                    \
+   : (ctl::LogLevel::level < ctl::SystemLogLevel)                              \
+       ? (void)0                                                               \
+       : ctl::FMessageVoidify() &                                              \
+             ctl::LogMessage(ctl::LogLevel::level, __FILE__, __LINE__)         \
+                 .stream())
 } // namespace ctl
 
 #endif // LOG_HPP_

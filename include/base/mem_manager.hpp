@@ -26,21 +26,19 @@
 #endif
 #endif
 
-namespace vfem
-{
+namespace vfem {
 
-enum class MemType
-{
-  HOST,         // 0 HOST memory (default)
-  HOST_32,      // 1 32-bit addressable HOST memory
-  HOST_64,      // 2 64-bit addressable HOST memory
-  HOST_DEBUG,   // 3 HOST memory with debugging enabled
-  HOST_UMPIRE,  // 4 HOST memory allocated via Umpire (if available)
-  HOST_PINNED,  // 5 HOST pinned memory (page-locked, for faster GPU transfers)
-  MANAGED,      // 6 MANAGED memory (accessible from both HOST and DEVICE)
-  DEVICE,       // 7 DEVICE memory (GPU memory)
-  DEVICE_DEBUG, // 8 DEVICE memory with debugging enabled
-  DEVICE_UMPIRE,   // 9 DEVICE memory allocated via Umpire (if available)
+enum class MemType {
+  HOST,          // 0 HOST memory (default)
+  HOST_32,       // 1 32-bit addressable HOST memory
+  HOST_64,       // 2 64-bit addressable HOST memory
+  HOST_DEBUG,    // 3 HOST memory with debugging enabled
+  HOST_UMPIRE,   // 4 HOST memory allocated via Umpire (if available)
+  HOST_PINNED,   // 5 HOST pinned memory (page-locked, for faster GPU transfers)
+  MANAGED,       // 6 MANAGED memory (accessible from both HOST and DEVICE)
+  DEVICE,        // 7 DEVICE memory (GPU memory)
+  DEVICE_DEBUG,  // 8 DEVICE memory with debugging enabled
+  DEVICE_UMPIRE, // 9 DEVICE memory allocated via Umpire (if available)
   DEVICE_UMPIRE_2, // 10 DEVICE memory allocated via Umpire with different
                    // settings (e.g., different pool or arena)
   SIZE,            // 11 Number of memory types (must be last)
@@ -51,33 +49,29 @@ enum class MemType
             // HOST or MANAGED depending on the context)
 };
 
-inline std::ostream &
-operator<< (std::ostream &os, MemType type)
-{
-  constexpr const char *names[]
-      = { "HOST",         "HOST_32",       "HOST_64",         "HOST_DEBUG",
-          "HOST_UMPIRE",  "HOST_PINNED",   "MANAGED",         "DEVICE",
-          "DEVICE_DEBUG", "DEVICE_UMPIRE", "DEVICE_UMPIRE_2", "SIZE",
-          "PRESERVE",     "DEFAULT" };
-  const auto index = static_cast<std::size_t> (type);
-  if (index < std::size (names))
-    {
-      return os << names[index];
-    }
+inline std::ostream &operator<<(std::ostream &os, MemType type) {
+  constexpr const char *names[] = {
+      "HOST",         "HOST_32",       "HOST_64",         "HOST_DEBUG",
+      "HOST_UMPIRE",  "HOST_PINNED",   "MANAGED",         "DEVICE",
+      "DEVICE_DEBUG", "DEVICE_UMPIRE", "DEVICE_UMPIRE_2", "SIZE",
+      "PRESERVE",     "DEFAULT"};
+  const auto index = static_cast<std::size_t>(type);
+  if (index < std::size(names)) {
+    return os << names[index];
+  }
   return os << "Unknown(" << index << ")";
 }
 
 /// Static casts to 'int' and constexprs for MemType values
-constexpr int MemTypeSize       = static_cast<int> (MemType::SIZE);
-constexpr int HostMemType       = static_cast<int> (MemType::HOST);
-constexpr int HostMemTypeSize   = static_cast<int> (MemType::DEVICE);
-constexpr int DeviceMemType     = static_cast<int> (MemType::MANAGED);
+constexpr int MemTypeSize       = static_cast<int>(MemType::SIZE);
+constexpr int HostMemType       = static_cast<int>(MemType::HOST);
+constexpr int HostMemTypeSize   = static_cast<int>(MemType::DEVICE);
+constexpr int DeviceMemType     = static_cast<int>(MemType::MANAGED);
 constexpr int DeviceMemTypeSize = MemTypeSize - DeviceMemType;
 
 extern VFEM_EXPORT const char *MemTypeName[MemTypeSize];
 
-enum class MemoryClass
-{
+enum class MemoryClass {
   HOST,
   HOST_32,
   HOST_64,
@@ -85,21 +79,11 @@ enum class MemoryClass
   MANAGED,
 };
 
-enum class MemorySide : std::uint8_t
-{
-  HOST,
-  DEVICE
-};
+enum class MemorySide : std::uint8_t { HOST, DEVICE };
 
-enum class AccessMode : std::uint8_t
-{
-  READ_ONLY,
-  WRITE_ONLY,
-  READ_WRITE
-};
+enum class AccessMode : std::uint8_t { READ_ONLY, WRITE_ONLY, READ_WRITE };
 
-enum class MemoryState : std::uint8_t
-{
+enum class MemoryState : std::uint8_t {
   EMPTY,
   UNINITIALIZED,
   HOST_VALID,
@@ -107,163 +91,139 @@ enum class MemoryState : std::uint8_t
   SYNCHRONIZED
 };
 
-enum class Transfer : std::uint8_t
-{
-  NONE,
-  HOST_TO_DEVICE,
-  DEVICE_TO_HOST
-};
+enum class Transfer : std::uint8_t { NONE, HOST_TO_DEVICE, DEVICE_TO_HOST };
 
-struct StateTransition
-{
+struct StateTransition {
   bool allowed;
   Transfer transfer;
   MemoryState new_state;
 };
 
 // Get the exclusive memory state for a given memory side (host or device)
-[[nodiscard]] constexpr MemoryState
-exclusiveState (MemorySide side) noexcept
-{
+[[nodiscard]] constexpr MemoryState exclusiveState(MemorySide side) noexcept {
   return side == MemorySide::HOST ? MemoryState::HOST_VALID
                                   : MemoryState::DEVICE_VALID;
 }
 
 // check if the memory state is valid for the given side (host or device)
-[[nodiscard]] constexpr bool
-isValidOn (MemoryState state, MemorySide side) noexcept
-{
-  return state == MemoryState::SYNCHRONIZED || state == exclusiveState (side);
+[[nodiscard]] constexpr bool isValidOn(MemoryState state,
+                                       MemorySide side) noexcept {
+  return state == MemoryState::SYNCHRONIZED || state == exclusiveState(side);
 }
 
 [[nodiscard]] constexpr StateTransition
-nextState (MemoryState current, MemorySide target, AccessMode mode) noexcept
-{
-  const bool valid_side
-      = target == MemorySide::HOST || target == MemorySide::DEVICE;
-  const bool valid_mode = mode == AccessMode::READ_ONLY
-                          || mode == AccessMode::WRITE_ONLY
-                          || mode == AccessMode::READ_WRITE;
-  if (!valid_side || !valid_mode || current == MemoryState::EMPTY)
-    {
-      return { false, Transfer::NONE, current };
+nextState(MemoryState current, MemorySide target, AccessMode mode) noexcept {
+  const bool valid_side =
+      target == MemorySide::HOST || target == MemorySide::DEVICE;
+  const bool valid_mode = mode == AccessMode::READ_ONLY ||
+                          mode == AccessMode::WRITE_ONLY ||
+                          mode == AccessMode::READ_WRITE;
+  if (!valid_side || !valid_mode || current == MemoryState::EMPTY) {
+    return {false, Transfer::NONE, current};
+  }
+  const MemoryState target_state = exclusiveState(target);
+  if (mode == AccessMode::WRITE_ONLY) {
+    return {true, Transfer::NONE, target_state};
+  }
+  if (current == MemoryState::UNINITIALIZED) {
+    return {false, Transfer::NONE, current};
+  }
+  if (current == MemoryState::HOST_VALID ||
+      current == MemoryState::DEVICE_VALID ||
+      current == MemoryState::SYNCHRONIZED) {
+    if (isValidOn(current, target)) {
+      return {true, Transfer::NONE,
+              mode == AccessMode::READ_ONLY ? current : target_state};
     }
-  const MemoryState target_state = exclusiveState (target);
-  if (mode == AccessMode::WRITE_ONLY)
-    {
-      return { true, Transfer::NONE, target_state };
-    }
-  if (current == MemoryState::UNINITIALIZED)
-    {
-      return { false, Transfer::NONE, current };
-    }
-  if (current == MemoryState::HOST_VALID
-      || current == MemoryState::DEVICE_VALID
-      || current == MemoryState::SYNCHRONIZED)
-    {
-      if (isValidOn (current, target))
-        {
-          return { true, Transfer::NONE,
-                   mode == AccessMode::READ_ONLY ? current : target_state };
-        }
-      const Transfer transfer = target == MemorySide::HOST
-                                    ? Transfer::DEVICE_TO_HOST
-                                    : Transfer::HOST_TO_DEVICE;
-      return { true, transfer,
-               mode == AccessMode::READ_ONLY ? MemoryState::SYNCHRONIZED
-                                             : target_state };
-    }
+    const Transfer transfer = target == MemorySide::HOST
+                                  ? Transfer::DEVICE_TO_HOST
+                                  : Transfer::HOST_TO_DEVICE;
+    return {true, transfer,
+            mode == AccessMode::READ_ONLY ? MemoryState::SYNCHRONIZED
+                                          : target_state};
+  }
 
-  return { false, Transfer::NONE, current };
+  return {false, Transfer::NONE, current};
 }
 
-[[nodiscard]] inline bool
-isHostMemory (MemType type) noexcept
-{
-  switch (type)
-    {
-    case MemType::HOST:
-    case MemType::HOST_32:
-    case MemType::HOST_64:
-    case MemType::HOST_DEBUG:
-    case MemType::HOST_UMPIRE:
-    case MemType::HOST_PINNED:
-    case MemType::MANAGED:
-      return true;
-    default:
-      return false;
-    }
+[[nodiscard]] inline bool isHostMemory(MemType type) noexcept {
+  switch (type) {
+  case MemType::HOST:
+  case MemType::HOST_32:
+  case MemType::HOST_64:
+  case MemType::HOST_DEBUG:
+  case MemType::HOST_UMPIRE:
+  case MemType::HOST_PINNED:
+  case MemType::MANAGED:
+    return true;
+  default:
+    return false;
+  }
 }
 
-[[nodiscard]] inline bool
-isDeviceMemory (MemType type) noexcept
-{
-  switch (type)
-    {
-    case MemType::MANAGED:
-    case MemType::DEVICE:
-    case MemType::DEVICE_DEBUG:
-    case MemType::DEVICE_UMPIRE:
-    case MemType::DEVICE_UMPIRE_2:
-      return true;
-    default:
-      return false;
-    }
+[[nodiscard]] inline bool isDeviceMemory(MemType type) noexcept {
+  switch (type) {
+  case MemType::MANAGED:
+  case MemType::DEVICE:
+  case MemType::DEVICE_DEBUG:
+  case MemType::DEVICE_UMPIRE:
+  case MemType::DEVICE_UMPIRE_2:
+    return true;
+  default:
+    return false;
+  }
 }
 
-VFEM_EXPORT MemType getMemType (MemoryClass mc, int index = 0);
-VFEM_EXPORT bool memClassContainsType (MemoryClass mc, MemType type);
-VFEM_EXPORT void memoryPrintFlags (unsigned flags) noexcept;
-inline MemoryClass operator* (MemoryClass lhs, MemoryClass rhs);
+VFEM_EXPORT MemType getMemType(MemoryClass mc, int index = 0);
+VFEM_EXPORT bool memClassContainsType(MemoryClass mc, MemType type);
+VFEM_EXPORT void memoryPrintFlags(unsigned flags) noexcept;
+inline MemoryClass operator*(MemoryClass lhs, MemoryClass rhs);
 
 /// Class used by VFEM to manage memory allocations and deallocations across
 /// different memory types.
 
 template <typename T>
-concept DeviceCopyable
-    = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
+concept DeviceCopyable =
+    std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
 
-using DeallocateFunc = void (*) (void *, std::size_t alignment) noexcept;
+using DeallocateFunc = void (*)(void *, std::size_t alignment) noexcept;
 
-struct MemoryRecord final
-{
+struct MemoryRecord final {
   void *h_ptr{};
   void *d_ptr{};
   std::size_t bytes{};
-  std::size_t h_alignment{ alignof (std::max_align_t) };
-  std::size_t d_alignment{ alignof (std::max_align_t) };
-  MemType h_mt{ MemType ::HOST };
-  MemType d_mt{ MemType ::DEVICE };
+  std::size_t h_alignment{alignof(std::max_align_t)};
+  std::size_t d_alignment{alignof(std::max_align_t)};
+  MemType h_mt{MemType ::HOST};
+  MemType d_mt{MemType ::DEVICE};
   DeallocateFunc h_deallocate{};
   DeallocateFunc d_deallocate{};
   bool owns_h{};
   bool owns_d{};
-  MemoryState state{ MemoryState::EMPTY };
+  MemoryState state{MemoryState::EMPTY};
 
-  MemoryRecord ()                                = default;
-  MemoryRecord (const MemoryRecord &)            = delete;
-  MemoryRecord &operator= (const MemoryRecord &) = delete;
-  ~MemoryRecord () noexcept;
+  MemoryRecord()                                = default;
+  MemoryRecord(const MemoryRecord &)            = delete;
+  MemoryRecord &operator=(const MemoryRecord &) = delete;
+  ~MemoryRecord() noexcept;
 };
 
 class MemoryManager;
 
-template <DeviceCopyable T> class Memory
-{
+template <DeviceCopyable T> class Memory {
 protected:
   friend class MemoryManager;
-  friend void memoryPrintFlags (unsigned flags) noexcept;
+  friend void memoryPrintFlags(unsigned flags) noexcept;
 
-  enum FlagMask : unsigned
-  {
+  enum FlagMask : unsigned {
 #ifndef REGISTERED
     REGISTERED = 1 << 0,
 #endif
     Registered  = 1 << 0,
     OWNS_HOST   = 1 << 1,
     OWNS_DEVICE = 1 << 2,
-    OWNS_INTERNAL
-    = 1 << 3, // Owns memory allocated internally by VFEM (not user-provided)
+    OWNS_INTERNAL =
+        1 << 3, // Owns memory allocated internally by VFEM (not user-provided)
     VALID_HOST   = 1 << 4,
     VALID_DEVICE = 1 << 5,
     USE_DEVICE   = 1 << 6, // Indicates that the device pointer should be used
@@ -276,68 +236,68 @@ protected:
   mutable T *h_ptr{};
   mutable T *d_ptr{};
   int capacity{};
-  MemType h_mt{ MemType::HOST };
-  MemType d_mt{ MemType::DEVICE };
+  MemType h_mt{MemType::HOST};
+  MemType d_mt{MemType::DEVICE};
   mutable unsigned flags{};
 
 public:
   // Default constructor initializes to an empty, invalid state
-  Memory () noexcept = default;
+  Memory() noexcept = default;
 
-  Memory (Memory &&other) noexcept;
-  Memory &operator= (Memory &&other) noexcept;
+  Memory(Memory &&other) noexcept;
+  Memory &operator=(Memory &&other) noexcept;
 
-  Memory (const Memory &other) noexcept;
-  Memory &operator= (const Memory &other) noexcept;
+  Memory(const Memory &other) noexcept;
+  Memory &operator=(const Memory &other) noexcept;
 
   // Create a new memory allocation of the given size. If the memory is already
   // allocated, it will be deallocated and reallocated. The memory type is set
   // to the default host memory type (HOST).
 
-  explicit Memory (int size) { allocate (size); }
+  explicit Memory(int size) { allocate(size); }
 
   // Create a new memory allocation of the given size and memory type. If the
   // memory is already allocated, it will be deallocated and reallocated.
 
-  explicit Memory (MemType mt) { configureTypes (mt); }
+  explicit Memory(MemType mt) { configureTypes(mt); }
 
-  Memory (int size, MemType mt);
-  Memory (int size, MemType h_mt, MemType d_mt);
+  Memory(int size, MemType mt);
+  Memory(int size, MemType h_mt, MemType d_mt);
 
-  explicit Memory (T *ptr, int size, MemType mt, bool own);
+  explicit Memory(T *ptr, int size, MemType mt, bool own);
 
-  ~Memory () = default;
+  ~Memory() = default;
 
   // Note: The destructor is not marked noexcept because it may throw if the
   // destructor of T throws during deallocation.
 
-  void swap (Memory &other) noexcept;
+  void swap(Memory &other) noexcept;
 
   // Reset memory to an empty state without releasing storage or changing
   // types.
-  constexpr void reset () noexcept;
+  constexpr void reset() noexcept;
 
   // Reset memory to an empty state and configure its host/device memory types.
-  void reset (MemType memory_type);
+  void reset(MemType memory_type);
 
-  bool empty () const noexcept;
+  bool empty() const noexcept;
 
-  inline void allocate (int size);
-  inline void allocate (int size, MemType mt);
-  inline void allocate (int size, MemType host_mt, MemType device_mt);
+  inline void allocate(int size);
+  inline void allocate(int size, MemType mt);
+  inline void allocate(int size, MemType host_mt, MemType device_mt);
 
   // Wrap the memory around an existing pointer. The memory will not be owned
   // by this object, and will not be deallocated when the object is destroyed.
   // The memory type is set to the default host memory type (HOST).
 
-  inline void wrap (T *ptr, int size, MemType mt, bool own);
-  inline void wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
-                    MemType device_mt, bool own, bool valid_host = false,
-                    bool valid_device = true);
-  inline void makeAlias (const Memory &base, int offset, int size);
+  inline void wrap(T *ptr, int size, MemType mt, bool own);
+  inline void wrap(T *host_ptr, T *device_ptr, int size, MemType host_mt,
+                   MemType device_mt, bool own, bool valid_host = false,
+                   bool valid_device = true);
+  inline void makeAlias(const Memory &base, int offset, int size);
 
-  inline T &operator[] (int index);
-  inline const T &operator[] (int index) const;
+  inline T &operator[](int index);
+  inline const T &operator[](int index) const;
 
   operator T *();
   operator const T *();
@@ -346,147 +306,106 @@ public:
   template <typename U> inline explicit operator U *();
   template <typename U> inline explicit operator const U *() const;
 
-  void
-  release () noexcept
-  {
-    reset ();
-  };
+  void release() noexcept { reset(); };
 
-  int
-  capaCity () const noexcept
-  {
-    return capacity;
-  }
+  int capaCity() const noexcept { return capacity; }
 
   // deallocate the device memory, optionally copying the data back to the host
 
-  void deleteDevice (bool copy_to_host = true);
+  void deleteDevice(bool copy_to_host = true);
 
   // error checking for valid host/device pointers based on memory type and
   // ownership flags. This is used by MemoryManager and other internal
   // components to ensure that memory operations
-  bool hostIsValid () const noexcept;
-  bool deviceIsValid () const noexcept;
-  bool ownsHostPtr () const noexcept;
-  void setHostPtrOwner (bool own) noexcept;
-  bool ownsDevicePtr () const noexcept;
+  bool hostIsValid() const noexcept;
+  bool deviceIsValid() const noexcept;
+  bool ownsHostPtr() const noexcept;
+  void setHostPtrOwner(bool own) noexcept;
+  bool ownsDevicePtr() const noexcept;
 
-  bool
-  useDevice () const noexcept
-  {
-    return (flags & USE_DEVICE) != 0U;
-  };
+  bool useDevice() const noexcept { return (flags & USE_DEVICE) != 0U; };
 
-  void
-  useDevice (bool use_dev) const noexcept
-  {
+  void useDevice(bool use_dev) const noexcept {
     flags = use_dev ? (flags | USE_DEVICE) : (flags & ~USE_DEVICE);
   };
 
-  inline void sync (const Memory &other) const;
+  inline void sync(const Memory &other) const;
 
-  inline void syncAlias (const Memory &base, int alias_size) const;
+  inline void syncAlias(const Memory &base, int alias_size) const;
 
   // Getters for memory type and ownership flags (used by MemoryManager and
   // other internal components)
-  [[nodiscard]] MemType
-  getHostMemType () const noexcept
-  {
-    return h_mt;
-  }
+  [[nodiscard]] MemType getHostMemType() const noexcept { return h_mt; }
 
-  [[nodiscard]] MemType
-  getDeviceMemType () const noexcept
-  {
-    return d_mt;
-  }
+  [[nodiscard]] MemType getDeviceMemType() const noexcept { return d_mt; }
 
-  [[nodiscard]] MemType
-  getMemType () const noexcept
-  {
-    return useDevice () ? d_mt : h_mt;
+  [[nodiscard]] MemType getMemType() const noexcept {
+    return useDevice() ? d_mt : h_mt;
   }
 
   // Memory access methods
 
-  inline T *readWrite (MemoryClass mc, int size);
-  inline const T *read (MemoryClass mc, int size) const;
-  inline T *write (MemoryClass mc, int size);
+  inline T *readWrite(MemoryClass mc, int size);
+  inline const T *read(MemoryClass mc, int size) const;
+  inline T *write(MemoryClass mc, int size);
 
   // Memory type query methods
-  MemType
-  getMemoryType () const noexcept
-  {
-    return getMemType ();
-  };
+  MemType getMemoryType() const noexcept { return getMemType(); };
 
-  MemType
-  getHostMemoryType () const noexcept
-  {
-    return getHostMemType ();
-  };
+  MemType getHostMemoryType() const noexcept { return getHostMemType(); };
 
-  MemType
-  getDeviceMemoryType () const noexcept
-  {
-    return getDeviceMemType ();
-  };
+  MemType getDeviceMemoryType() const noexcept { return getDeviceMemType(); };
 
   // Copy type methods
-  inline void copyFrom (const Memory &other, int size);
-  inline void copyTo (Memory &other, int size) const;
-  inline void copyFromHost (const T *host_ptr, int size);
-  inline void copyToHost (T *host_ptr, int size) const;
+  inline void copyFrom(const Memory &other, int size);
+  inline void copyTo(Memory &other, int size) const;
+  inline void copyFromHost(const T *host_ptr, int size);
+  inline void copyToHost(T *host_ptr, int size) const;
 
   // Print the flags for debugging purposes
 
-  inline void printFlags () const;
+  inline void printFlags() const;
 
-  [[nodiscard]] inline int compareHostAndDevice (int size) const;
+  [[nodiscard]] inline int compareHostAndDevice(int size) const;
 
 private:
   std::shared_ptr<MemoryRecord> record_;
   std::size_t byte_offset_{};
 
-  [[nodiscard]] static bool isPlainHostType (MemType type) noexcept;
-  [[nodiscard]] static bool hasRequiredAlignment (const void *ptr,
-                                                  MemType type) noexcept;
-  static void deleteWrappedHost (void *ptr, std::size_t alignment) noexcept;
+  [[nodiscard]] static bool isPlainHostType(MemType type) noexcept;
+  [[nodiscard]] static bool hasRequiredAlignment(const void *ptr,
+                                                 MemType type) noexcept;
+  static void deleteWrappedHost(void *ptr, std::size_t alignment) noexcept;
 
-  [[nodiscard]] inline static std::size_t checkedBytes (int size);
-  [[nodiscard]] inline bool validAccessSize (int size) const;
-  [[nodiscard]] inline bool sideFor (MemoryClass mc, MemorySide &side) const;
-  [[nodiscard]] inline MemType typeFor (MemorySide side) const noexcept;
-  [[nodiscard]] inline T *viewPointer (void *base) const noexcept;
-  [[nodiscard]] inline const T *viewPointer (const void *base) const noexcept;
+  [[nodiscard]] inline static std::size_t checkedBytes(int size);
+  [[nodiscard]] inline bool validAccessSize(int size) const;
+  [[nodiscard]] inline bool sideFor(MemoryClass mc, MemorySide &side) const;
+  [[nodiscard]] inline MemType typeFor(MemorySide side) const noexcept;
+  [[nodiscard]] inline T *viewPointer(void *base) const noexcept;
+  [[nodiscard]] inline const T *viewPointer(const void *base) const noexcept;
 
-  void refreshView () const noexcept;
-  void configureTypes (MemType memory_type);
-  void moveFrom (Memory &&other) noexcept;
+  void refreshView() const noexcept;
+  void configureTypes(MemType memory_type);
+  void moveFrom(Memory &&other) noexcept;
 
 #if defined(VFEM_USE_CUDA) || defined(VFEM_USE_HIP)
-  template <typename U, std::size_t new_align_bytes = alignof (U)>
-  struct AllocDevice
-  {
-    static_assert (new_align_bytes <= 256, "cudaMalloc / hipMalloc");
-    static U *
-    New (std::size_t size)
-    {
+  template <typename U, std::size_t new_align_bytes = alignof(U)>
+  struct AllocDevice {
+    static_assert(new_align_bytes <= 256, "cudaMalloc / hipMalloc");
+    static U *New(std::size_t size) {
       U *ptr = nullptr;
 #ifdef VFEM_USE_HIP
-      hipMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (U));
+      hipMalloc(reinterpret_cast<void **>(&ptr), size * sizeof(U));
 #else
-      cudaMalloc (reinterpret_cast<void **> (&ptr), size * sizeof (U));
+      cudaMalloc(reinterpret_cast<void **>(&ptr), size * sizeof(U));
 #endif
       return ptr;
     }
-    static void
-    Delete (U *ptr)
-    {
+    static void Delete(U *ptr) {
 #ifdef VFEM_USE_HIP
-      hipFree (ptr);
+      hipFree(ptr);
 #else
-      cudaFree (ptr);
+      cudaFree(ptr);
 #endif
     }
   };
@@ -499,48 +418,46 @@ private:
 // to copy data between different memory types. The class also maintains a
 // mapping of memory types to their corresponding backends and copy functions.
 
-class VFEM_EXPORT MemoryManager
-{
+class VFEM_EXPORT MemoryManager {
 public:
   using AllocateFunc = void *(*)(std::size_t bytes, std::size_t alignment);
-  using CopyFunc = void (*) (void *dst, const void *src, std::size_t bytes);
+  using CopyFunc     = void (*)(void *dst, const void *src, std::size_t bytes);
   using BackendDeallocateFunc = ::vfem::DeallocateFunc;
 
-  struct Backend
-  {
+  struct Backend {
     AllocateFunc allocate{};
     BackendDeallocateFunc deallocate{};
   };
 
   /// Configure backends before any Memory object starts using the type.
-  static MemoryManager &get ();
+  static MemoryManager &get();
 
-  void registerBackend (MemType type, Backend backend);
-  void registerCopy (MemType dst, MemType src, CopyFunc copy);
+  void registerBackend(MemType type, Backend backend);
+  void registerCopy(MemType dst, MemType src, CopyFunc copy);
 
-  [[nodiscard]] bool supports (MemType type) const noexcept;
+  [[nodiscard]] bool supports(MemType type) const noexcept;
 
 private:
   template <DeviceCopyable T> friend class Memory;
 
-  MemoryManager ();
+  MemoryManager();
 
   [[nodiscard]] BackendDeallocateFunc
-  getDeallocate (MemType type) const noexcept;
+  getDeallocate(MemType type) const noexcept;
 
   // TODO: Consider making these methods public if they are needed outside of
   // Memory<T>
-  void allocate (MemoryRecord &record, MemorySide side);
-  void *access (MemoryRecord &record, MemorySide side, AccessMode mode);
-  void deleteDevice (MemoryRecord &record, bool copy_to_host);
-  bool copy (void *dst, MemType dst_mt, const void *src, MemType src_mt,
-             std::size_t bytes);
+  void allocate(MemoryRecord &record, MemorySide side);
+  void *access(MemoryRecord &record, MemorySide side, AccessMode mode);
+  void deleteDevice(MemoryRecord &record, bool copy_to_host);
+  bool copy(void *dst, MemType dst_mt, const void *src, MemType src_mt,
+            std::size_t bytes);
 
-  [[nodiscard]] static bool isConcreteType (MemType type) noexcept;
-  [[nodiscard]] static std::size_t typeIndex (MemType type);
+  [[nodiscard]] static bool isConcreteType(MemType type) noexcept;
+  [[nodiscard]] static std::size_t typeIndex(MemType type);
   [[nodiscard]] static std::size_t
-  requiredAlignment (MemType host_mt, MemType device_mt,
-                     std::size_t type_alignment) noexcept;
+  requiredAlignment(MemType host_mt, MemType device_mt,
+                    std::size_t type_alignment) noexcept;
 
   std::array<Backend, MemTypeSize> backends_{};
   std::array<CopyFunc, MemTypeSize * MemTypeSize> copies_{};
@@ -550,73 +467,60 @@ private:
 // private member function implementations
 
 template <DeviceCopyable T>
-bool
-Memory<T>::isPlainHostType (MemType type) noexcept
-{
-  switch (type)
-    {
-    case MemType::HOST:
-    case MemType::HOST_32:
-    case MemType::HOST_64:
-    case MemType::HOST_DEBUG:
-      return true;
-    default:
-      return false;
-    }
+bool Memory<T>::isPlainHostType(MemType type) noexcept {
+  switch (type) {
+  case MemType::HOST:
+  case MemType::HOST_32:
+  case MemType::HOST_64:
+  case MemType::HOST_DEBUG:
+    return true;
+  default:
+    return false;
+  }
 }
 
 template <DeviceCopyable T>
-bool
-Memory<T>::hasRequiredAlignment (const void *ptr, MemType type) noexcept
-{
-  std::size_t required = alignof (std::max_align_t);
-  switch (type)
-    {
-    case MemType::MANAGED:
-    case MemType::DEVICE:
-    case MemType::DEVICE_DEBUG:
-    case MemType::DEVICE_UMPIRE:
-    case MemType::DEVICE_UMPIRE_2:
-      required = 256;
-      break;
-    case MemType::HOST_PINNED:
-      required = 64;
-      break;
-    default:
-      break;
-    };
-  if (ptr == nullptr)
-    {
-      return true;
-    }
-  required = std::max (required, alignof (T));
-  return reinterpret_cast<std::uintptr_t> (ptr) % required == 0;
+bool Memory<T>::hasRequiredAlignment(const void *ptr, MemType type) noexcept {
+  std::size_t required = alignof(std::max_align_t);
+  switch (type) {
+  case MemType::MANAGED:
+  case MemType::DEVICE:
+  case MemType::DEVICE_DEBUG:
+  case MemType::DEVICE_UMPIRE:
+  case MemType::DEVICE_UMPIRE_2:
+    required = 256;
+    break;
+  case MemType::HOST_PINNED:
+    required = 64;
+    break;
+  default:
+    break;
+  };
+  if (ptr == nullptr) {
+    return true;
+  }
+  required = std::max(required, alignof(T));
+  return reinterpret_cast<std::uintptr_t>(ptr) % required == 0;
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::refreshView () const noexcept
-{
+template <DeviceCopyable T> void Memory<T>::refreshView() const noexcept {
 
   h_ptr = record_ && record_->h_ptr
-              ? static_cast<T *> (record_->h_ptr) + byte_offset_ / sizeof (T)
+              ? static_cast<T *>(record_->h_ptr) + byte_offset_ / sizeof(T)
               : nullptr;
   d_ptr = record_ && record_->d_ptr
-              ? static_cast<T *> (record_->d_ptr) + byte_offset_ / sizeof (T)
+              ? static_cast<T *>(record_->d_ptr) + byte_offset_ / sizeof(T)
               : nullptr;
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::moveFrom (Memory &&other) noexcept
-{
+template <DeviceCopyable T> void Memory<T>::moveFrom(Memory &&other) noexcept {
   h_ptr              = other.h_ptr;
   d_ptr              = other.d_ptr;
   capacity           = other.capacity;
   h_mt               = other.h_mt;
   d_mt               = other.d_mt;
   flags              = other.flags;
-  record_            = std::move (other.record_);
+  record_            = std::move(other.record_);
   byte_offset_       = other.byte_offset_;
 
   other.h_ptr        = nullptr;
@@ -629,87 +533,70 @@ Memory<T>::moveFrom (Memory &&other) noexcept
 //============================================================================
 
 template <DeviceCopyable T>
-Memory<T>::Memory (const Memory &other) noexcept
-    : h_ptr (other.h_ptr), d_ptr (other.d_ptr), capacity (other.capacity),
-      h_mt (other.h_mt), d_mt (other.d_mt),
-      flags ((other.flags & USE_DEVICE) | ALIAS), record_ (other.record_),
-      byte_offset_ (other.byte_offset_)
-{
-  refreshView ();
+Memory<T>::Memory(const Memory &other) noexcept
+    : h_ptr(other.h_ptr), d_ptr(other.d_ptr), capacity(other.capacity),
+      h_mt(other.h_mt), d_mt(other.d_mt),
+      flags((other.flags & USE_DEVICE) | ALIAS), record_(other.record_),
+      byte_offset_(other.byte_offset_) {
+  refreshView();
 }
 
 template <DeviceCopyable T>
-Memory<T> &
-Memory<T>::operator= (const Memory &other) noexcept
-{
-  if (this == &other)
-    {
-      return *this;
-    }
+Memory<T> &Memory<T>::operator=(const Memory &other) noexcept {
+  if (this == &other) {
+    return *this;
+  }
   record_      = other.record_;
   byte_offset_ = other.byte_offset_;
   capacity     = other.capacity;
   h_mt         = other.h_mt;
   d_mt         = other.d_mt;
   flags        = (other.flags & USE_DEVICE) | ALIAS;
-  refreshView ();
+  refreshView();
   return *this;
 }
 
-template <DeviceCopyable T> Memory<T>::Memory (Memory &&other) noexcept
-{
-  moveFrom (std::move (other));
+template <DeviceCopyable T> Memory<T>::Memory(Memory &&other) noexcept {
+  moveFrom(std::move(other));
 }
 
 template <DeviceCopyable T>
-Memory<T> &
-Memory<T>::operator= (Memory &&other) noexcept
-{
-  if (this != &other)
-    {
-      reset ();
-      moveFrom (std::move (other));
-    }
+Memory<T> &Memory<T>::operator=(Memory &&other) noexcept {
+  if (this != &other) {
+    reset();
+    moveFrom(std::move(other));
+  }
   return *this;
 }
 
-template <DeviceCopyable T> Memory<T>::Memory (int size, MemType mt)
-{
-  allocate (size, mt);
+template <DeviceCopyable T> Memory<T>::Memory(int size, MemType mt) {
+  allocate(size, mt);
 }
 
 template <DeviceCopyable T>
-Memory<T>::Memory (int size, MemType h_mt, MemType d_mt)
-{
-  allocate (size, h_mt, d_mt);
+Memory<T>::Memory(int size, MemType h_mt, MemType d_mt) {
+  allocate(size, h_mt, d_mt);
 }
 
 template <DeviceCopyable T>
-Memory<T>::Memory (T *ptr, int size, MemType mt, bool own)
-{
-  wrap (ptr, size, mt, own);
+Memory<T>::Memory(T *ptr, int size, MemType mt, bool own) {
+  wrap(ptr, size, mt, own);
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::swap (Memory &other) noexcept
-{
+template <DeviceCopyable T> void Memory<T>::swap(Memory &other) noexcept {
   using std::swap;
-  swap (h_ptr, other.h_ptr);
-  swap (d_ptr, other.d_ptr);
-  swap (capacity, other.capacity);
-  swap (h_mt, other.h_mt);
-  swap (d_mt, other.d_mt);
-  swap (flags, other.flags);
-  swap (record_, other.record_);
-  swap (byte_offset_, other.byte_offset_);
+  swap(h_ptr, other.h_ptr);
+  swap(d_ptr, other.d_ptr);
+  swap(capacity, other.capacity);
+  swap(h_mt, other.h_mt);
+  swap(d_mt, other.d_mt);
+  swap(flags, other.flags);
+  swap(record_, other.record_);
+  swap(byte_offset_, other.byte_offset_);
 }
 
-template <DeviceCopyable T>
-constexpr void
-Memory<T>::reset () noexcept
-{
-  record_.reset ();
+template <DeviceCopyable T> constexpr void Memory<T>::reset() noexcept {
+  record_.reset();
   h_ptr        = nullptr;
   d_ptr        = nullptr;
   capacity     = 0;
@@ -717,471 +604,374 @@ Memory<T>::reset () noexcept
   flags        = 0;
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::reset (MemType memory_type)
-{
-  reset ();
-  configureTypes (memory_type);
+template <DeviceCopyable T> void Memory<T>::reset(MemType memory_type) {
+  reset();
+  configureTypes(memory_type);
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::configureTypes (MemType memory_type)
-{
-  if (memory_type == MemType::PRESERVE)
-    {
-      return;
-    }
-  if (memory_type == MemType::DEFAULT)
-    {
-      memory_type = MemType::HOST;
-    }
-  if (!isHostMemory (memory_type) && !isDeviceMemory (memory_type))
-    {
-      vfemError ("memory type is not a concrete backend type");
-      return;
-    }
+void Memory<T>::configureTypes(MemType memory_type) {
+  if (memory_type == MemType::PRESERVE) {
+    return;
+  }
+  if (memory_type == MemType::DEFAULT) {
+    memory_type = MemType::HOST;
+  }
+  if (!isHostMemory(memory_type) && !isDeviceMemory(memory_type)) {
+    vfemError("memory type is not a concrete backend type");
+    return;
+  }
 
-  if (memory_type == MemType::MANAGED)
-    {
-      h_mt = MemType::MANAGED;
-      d_mt = MemType::MANAGED;
-    }
-  else if (isDeviceMemory (memory_type))
-    {
-      h_mt = MemType::HOST;
-      d_mt = memory_type;
-    }
-  else
-    {
-      h_mt = memory_type;
-      d_mt = MemType::DEVICE;
-    }
+  if (memory_type == MemType::MANAGED) {
+    h_mt = MemType::MANAGED;
+    d_mt = MemType::MANAGED;
+  } else if (isDeviceMemory(memory_type)) {
+    h_mt = MemType::HOST;
+    d_mt = memory_type;
+  } else {
+    h_mt = memory_type;
+    d_mt = MemType::DEVICE;
+  }
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::deleteWrappedHost (void *ptr, std::size_t /*unused*/) noexcept
-{
-  delete[] static_cast<T *> (ptr);
+void Memory<T>::deleteWrappedHost(void *ptr, std::size_t /*unused*/) noexcept {
+  delete[] static_cast<T *>(ptr);
 }
 
 // helper access function
 
-template <DeviceCopyable T>
-std::size_t
-Memory<T>::checkedBytes (int size)
-{
-  if (size < 0)
-    {
-      vfemError ("memory size must be non-negative");
-      return 0;
-    }
+template <DeviceCopyable T> std::size_t Memory<T>::checkedBytes(int size) {
+  if (size < 0) {
+    vfemError("memory size must be non-negative");
+    return 0;
+  }
 
-  const auto count = static_cast<std::size_t> (size);
-  if (count > std::numeric_limits<std::size_t>::max () / sizeof (T))
-    {
-      vfemError ("memory allocation size overflow");
-      return 0;
-    }
+  const auto count = static_cast<std::size_t>(size);
+  if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
+    vfemError("memory allocation size overflow");
+    return 0;
+  }
 
-  return count * sizeof (T);
+  return count * sizeof(T);
+}
+
+template <DeviceCopyable T> bool Memory<T>::validAccessSize(int size) const {
+  return size >= 0 && static_cast<std::size_t>(size) <= capacity;
 }
 
 template <DeviceCopyable T>
-bool
-Memory<T>::validAccessSize (int size) const
-{
-  return size >= 0 && static_cast<std::size_t> (size) <= capacity;
-}
-
-template <DeviceCopyable T>
-bool
-Memory<T>::sideFor (MemoryClass mc, MemorySide &side) const
-{
-  switch (mc)
-    {
-    case MemoryClass::HOST:
-    case MemoryClass::HOST_32:
-    case MemoryClass::HOST_64:
-      side = MemorySide::HOST;
-      break;
-    case MemoryClass::DEVICE:
-      side = MemorySide::DEVICE;
-      break;
-    case MemoryClass::MANAGED:
-      if (h_mt != MemType::MANAGED || d_mt != MemType::MANAGED)
-        {
-          vfemError ("MANAGED access requested for non-managed memory");
-          return false;
-        }
-      side = useDevice () ? MemorySide::DEVICE : MemorySide::HOST;
-      break;
-    default:
-      vfemError ("invalid memory class");
+bool Memory<T>::sideFor(MemoryClass mc, MemorySide &side) const {
+  switch (mc) {
+  case MemoryClass::HOST:
+  case MemoryClass::HOST_32:
+  case MemoryClass::HOST_64:
+    side = MemorySide::HOST;
+    break;
+  case MemoryClass::DEVICE:
+    side = MemorySide::DEVICE;
+    break;
+  case MemoryClass::MANAGED:
+    if (h_mt != MemType::MANAGED || d_mt != MemType::MANAGED) {
+      vfemError("MANAGED access requested for non-managed memory");
       return false;
     }
-  if (!memClassContainsType (mc, typeFor (side)))
-    {
-      vfemError ("memory class does not match memory type");
-      return false;
-    }
+    side = useDevice() ? MemorySide::DEVICE : MemorySide::HOST;
+    break;
+  default:
+    vfemError("invalid memory class");
+    return false;
+  }
+  if (!memClassContainsType(mc, typeFor(side))) {
+    vfemError("memory class does not match memory type");
+    return false;
+  }
   return true;
 }
 
 template <DeviceCopyable T>
-MemType
-Memory<T>::typeFor (MemorySide side) const noexcept
-{
+MemType Memory<T>::typeFor(MemorySide side) const noexcept {
   return side == MemorySide::HOST ? h_mt : d_mt;
 }
 
 template <DeviceCopyable T>
-T *
-Memory<T>::viewPointer (void *base) const noexcept
-{
+T *Memory<T>::viewPointer(void *base) const noexcept {
   return base == nullptr ? nullptr
-                         : static_cast<T *> (base) + byte_offset_ / sizeof (T);
+                         : static_cast<T *>(base) + byte_offset_ / sizeof(T);
 }
 
 // memory type query methods
 
-template <DeviceCopyable T>
-bool
-Memory<T>::empty () const noexcept
-{
+template <DeviceCopyable T> bool Memory<T>::empty() const noexcept {
   return record_ == nullptr || capacity == 0;
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::allocate (int size)
-{
-  allocate (size, h_mt, d_mt);
+template <DeviceCopyable T> void Memory<T>::allocate(int size) {
+  allocate(size, h_mt, d_mt);
+}
+
+template <DeviceCopyable T> void Memory<T>::allocate(int size, MemType mt) {
+  if (mt == MemType::PRESERVE) {
+    allocate(size, h_mt, d_mt);
+    return;
+  }
+  Memory configured(mt);
+  allocate(size, configured.h_mt, configured.d_mt);
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::allocate (int size, MemType mt)
-{
-  if (mt == MemType::PRESERVE)
-    {
-      allocate (size, h_mt, d_mt);
-      return;
-    }
-  Memory configured (mt);
-  allocate (size, configured.h_mt, configured.d_mt);
-}
-
-template <DeviceCopyable T>
-void
-Memory<T>::allocate (int size, MemType host_mt, MemType device_mt)
-{
-  if (size < 0 || !isHostMemory (host_mt) || !isDeviceMemory (device_mt)
-      || ((host_mt == MemType::MANAGED) != (device_mt == MemType::MANAGED)))
-    {
-      vfemError ("invalid memory size or memory type pair");
-      return;
-    }
+void Memory<T>::allocate(int size, MemType host_mt, MemType device_mt) {
+  if (size < 0 || !isHostMemory(host_mt) || !isDeviceMemory(device_mt) ||
+      ((host_mt == MemType::MANAGED) != (device_mt == MemType::MANAGED))) {
+    vfemError("invalid memory size or memory type pair");
+    return;
+  }
   Memory replacement;
   replacement.h_mt = host_mt;
   replacement.d_mt = device_mt;
-  if (size == 0)
-    {
-      swap (replacement);
-      return;
-    }
-  auto record   = std::make_shared<MemoryRecord> ();
-  record->bytes = checkedBytes (size);
-  if (record->bytes == 0)
-    {
-      return;
-    }
+  if (size == 0) {
+    swap(replacement);
+    return;
+  }
+  auto record   = std::make_shared<MemoryRecord>();
+  record->bytes = checkedBytes(size);
+  if (record->bytes == 0) {
+    return;
+  }
   record->h_mt = host_mt;
   record->d_mt = device_mt;
-  record->h_alignment
-      = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
-  record->d_alignment
-      = MemoryManager::requiredAlignment (device_mt, device_mt, alignof (T));
-  MemoryManager::get ().allocate (*record, MemorySide::HOST);
-  if (record->h_ptr == nullptr)
-    {
-      return;
-    }
+  record->h_alignment =
+      MemoryManager::requiredAlignment(host_mt, host_mt, alignof(T));
+  record->d_alignment =
+      MemoryManager::requiredAlignment(device_mt, device_mt, alignof(T));
+  MemoryManager::get().allocate(*record, MemorySide::HOST);
+  if (record->h_ptr == nullptr) {
+    return;
+  }
   record->state        = MemoryState::UNINITIALIZED;
-  replacement.record_  = std::move (record);
+  replacement.record_  = std::move(record);
   replacement.capacity = size;
   replacement.flags    = Registered | OWNS_HOST | OWNS_INTERNAL;
-  replacement.refreshView ();
-  swap (replacement);
+  replacement.refreshView();
+  swap(replacement);
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::wrap (T *ptr, int size, MemType mt, bool own)
-{
-  if (size < 0)
-    {
-      vfemError ("memory size must be non-negative");
-      return;
-    }
-  if (!isHostMemory (mt) && !isDeviceMemory (mt))
-    {
-      vfemError ("memory type is not a concrete backend type");
-      return;
-    }
+void Memory<T>::wrap(T *ptr, int size, MemType mt, bool own) {
+  if (size < 0) {
+    vfemError("memory size must be non-negative");
+    return;
+  }
+  if (!isHostMemory(mt) && !isDeviceMemory(mt)) {
+    vfemError("memory type is not a concrete backend type");
+    return;
+  }
   MemType host_mt;
   MemType device_mt;
-  if (mt == MemType::MANAGED)
-    {
-      host_mt   = MemType::MANAGED;
-      device_mt = MemType::MANAGED;
-    }
-  else if (isDeviceMemory (mt))
-    {
-      host_mt   = MemType::HOST;
-      device_mt = mt;
-    }
-  else
-    {
-      host_mt   = mt;
-      device_mt = MemType::DEVICE;
-    }
+  if (mt == MemType::MANAGED) {
+    host_mt   = MemType::MANAGED;
+    device_mt = MemType::MANAGED;
+  } else if (isDeviceMemory(mt)) {
+    host_mt   = MemType::HOST;
+    device_mt = mt;
+  } else {
+    host_mt   = mt;
+    device_mt = MemType::DEVICE;
+  }
 
-  T *host_ptr             = isHostMemory (mt) ? ptr : nullptr;
-  T *device_ptr           = isDeviceMemory (mt) ? ptr : nullptr;
-  const bool valid_host   = isHostMemory (mt);
-  const bool valid_device = isDeviceMemory (mt);
-  if (size > 0 && ptr == nullptr)
-    {
-      vfemError ("wrapped pointer must be non-null for non-zero size");
-      return;
-    }
-  if (!hasRequiredAlignment (host_ptr, host_mt)
-      || !hasRequiredAlignment (device_ptr, device_mt))
-    {
-      vfemError ("wrapped pointer does not satisfy memory type alignment");
-      return;
-    }
+  T *host_ptr             = isHostMemory(mt) ? ptr : nullptr;
+  T *device_ptr           = isDeviceMemory(mt) ? ptr : nullptr;
+  const bool valid_host   = isHostMemory(mt);
+  const bool valid_device = isDeviceMemory(mt);
+  if (size > 0 && ptr == nullptr) {
+    vfemError("wrapped pointer must be non-null for non-zero size");
+    return;
+  }
+  if (!hasRequiredAlignment(host_ptr, host_mt) ||
+      !hasRequiredAlignment(device_ptr, device_mt)) {
+    vfemError("wrapped pointer does not satisfy memory type alignment");
+    return;
+  }
   Memory replacement;
   replacement.h_mt = host_mt;
   replacement.d_mt = device_mt;
-  if (size == 0)
-    {
-      swap (replacement);
-      return;
-    }
-  const std::size_t bytes = checkedBytes (size);
-  auto record             = std::make_shared<MemoryRecord> ();
+  if (size == 0) {
+    swap(replacement);
+    return;
+  }
+  const std::size_t bytes = checkedBytes(size);
+  auto record             = std::make_shared<MemoryRecord>();
   // Set the record fields based on the provided parameters
   record->h_ptr = host_ptr;
   record->d_ptr = device_ptr;
   record->bytes = bytes;
   record->h_mt  = host_mt;
   record->d_mt  = device_mt;
-  record->h_alignment
-      = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
-  record->d_alignment
-      = MemoryManager::requiredAlignment (device_mt, device_mt, alignof (T));
-  const DeallocateFunc host_deallocate
-      = host_mt == MemType::HOST
-            ? &Memory<T>::deleteWrappedHost
-            : MemoryManager::get ().getDeallocate (host_mt);
-  const DeallocateFunc device_deallocate
-      = MemoryManager::get ().getDeallocate (device_mt);
+  record->h_alignment =
+      MemoryManager::requiredAlignment(host_mt, host_mt, alignof(T));
+  record->d_alignment =
+      MemoryManager::requiredAlignment(device_mt, device_mt, alignof(T));
+  const DeallocateFunc host_deallocate =
+      host_mt == MemType::HOST ? &Memory<T>::deleteWrappedHost
+                               : MemoryManager::get().getDeallocate(host_mt);
+  const DeallocateFunc device_deallocate =
+      MemoryManager::get().getDeallocate(device_mt);
   const bool owns_host = own && host_ptr != nullptr;
-  const bool owns_device
-      = own && device_ptr != nullptr && device_ptr != host_ptr;
-  if ((owns_host && host_deallocate == nullptr)
-      || (owns_device && device_deallocate == nullptr))
-    {
-      vfemError ("no deallocator registered for owned wrapped memory");
-      return;
-    }
+  const bool owns_device =
+      own && device_ptr != nullptr && device_ptr != host_ptr;
+  if ((owns_host && host_deallocate == nullptr) ||
+      (owns_device && device_deallocate == nullptr)) {
+    vfemError("no deallocator registered for owned wrapped memory");
+    return;
+  }
   record->h_deallocate = host_deallocate;
   record->d_deallocate = device_deallocate;
   record->owns_h       = owns_host;
   record->owns_d       = owns_device;
-  if (valid_host && valid_device)
-    {
-      record->state = MemoryState::SYNCHRONIZED;
-    }
-  else if (valid_host)
-    {
-      record->state = MemoryState::HOST_VALID;
-    }
-  else if (valid_device)
-    {
-      record->state = MemoryState::DEVICE_VALID;
-    }
-  else
-    {
-      record->state = MemoryState::UNINITIALIZED;
-    }
+  if (valid_host && valid_device) {
+    record->state = MemoryState::SYNCHRONIZED;
+  } else if (valid_host) {
+    record->state = MemoryState::HOST_VALID;
+  } else if (valid_device) {
+    record->state = MemoryState::DEVICE_VALID;
+  } else {
+    record->state = MemoryState::UNINITIALIZED;
+  }
   unsigned new_flags = Registered;
-  if (record->owns_h)
-    {
-      new_flags |= OWNS_HOST;
-    }
-  if (record->owns_d)
-    {
-      new_flags |= OWNS_DEVICE;
-    }
-  replacement.record_  = std::move (record);
+  if (record->owns_h) {
+    new_flags |= OWNS_HOST;
+  }
+  if (record->owns_d) {
+    new_flags |= OWNS_DEVICE;
+  }
+  replacement.record_  = std::move(record);
   replacement.capacity = size;
   replacement.flags    = new_flags;
-  replacement.refreshView ();
-  swap (replacement);
+  replacement.refreshView();
+  swap(replacement);
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::wrap (T *host_ptr, T *device_ptr, int size, MemType host_mt,
-                 MemType device_mt, bool own, bool valid_host,
-                 bool valid_device)
-{
-  if (size < 0)
-    {
-      vfemError ("memory size must be non-negative");
-      return;
-    }
-  const std::size_t bytes = checkedBytes (size);
-  if (!isHostMemory (host_mt) || !isDeviceMemory (device_mt))
-    {
-      vfemError ("invalid host/device memory type pair");
-      return;
-    }
-  if ((host_mt == MemType::MANAGED) != (device_mt == MemType::MANAGED))
-    {
-      vfemError ("MANAGED memory must be used on both sides");
-      return;
-    }
-  if (host_mt == MemType::MANAGED && host_ptr != device_ptr)
-    {
-      vfemError ("managed host/device pointers must be identical");
-      return;
-    }
-  if (size > 0 && host_ptr == nullptr && device_ptr == nullptr)
-    {
-      vfemError ("at least one wrapped pointer must be non-null");
-      return;
-    }
-  if (valid_host && host_ptr == nullptr)
-    {
-      vfemError ("host pointer is marked valid but is null");
-      return;
-    }
-  if (valid_device && device_ptr == nullptr)
-    {
-      vfemError ("device pointer is marked valid but is null");
-      return;
-    }
-  if (!hasRequiredAlignment (host_ptr, host_mt)
-      || !hasRequiredAlignment (device_ptr, device_mt))
-    {
-      vfemError ("wrapped pointer does not satisfy memory type alignment");
-      return;
-    }
+void Memory<T>::wrap(T *host_ptr, T *device_ptr, int size, MemType host_mt,
+                     MemType device_mt, bool own, bool valid_host,
+                     bool valid_device) {
+  if (size < 0) {
+    vfemError("memory size must be non-negative");
+    return;
+  }
+  const std::size_t bytes = checkedBytes(size);
+  if (!isHostMemory(host_mt) || !isDeviceMemory(device_mt)) {
+    vfemError("invalid host/device memory type pair");
+    return;
+  }
+  if ((host_mt == MemType::MANAGED) != (device_mt == MemType::MANAGED)) {
+    vfemError("MANAGED memory must be used on both sides");
+    return;
+  }
+  if (host_mt == MemType::MANAGED && host_ptr != device_ptr) {
+    vfemError("managed host/device pointers must be identical");
+    return;
+  }
+  if (size > 0 && host_ptr == nullptr && device_ptr == nullptr) {
+    vfemError("at least one wrapped pointer must be non-null");
+    return;
+  }
+  if (valid_host && host_ptr == nullptr) {
+    vfemError("host pointer is marked valid but is null");
+    return;
+  }
+  if (valid_device && device_ptr == nullptr) {
+    vfemError("device pointer is marked valid but is null");
+    return;
+  }
+  if (!hasRequiredAlignment(host_ptr, host_mt) ||
+      !hasRequiredAlignment(device_ptr, device_mt)) {
+    vfemError("wrapped pointer does not satisfy memory type alignment");
+    return;
+  }
 
   Memory replacement;
   replacement.h_mt = host_mt;
   replacement.d_mt = device_mt;
-  if (size == 0)
-    {
-      swap (replacement);
-      return;
-    }
+  if (size == 0) {
+    swap(replacement);
+    return;
+  }
 
-  auto record   = std::make_shared<MemoryRecord> ();
+  auto record   = std::make_shared<MemoryRecord>();
   record->h_ptr = host_ptr;
   record->d_ptr = device_ptr;
   record->bytes = bytes;
   record->h_mt  = host_mt;
   record->d_mt  = device_mt;
-  record->h_alignment
-      = MemoryManager::requiredAlignment (host_mt, host_mt, alignof (T));
-  record->d_alignment
-      = MemoryManager::requiredAlignment (device_mt, device_mt, alignof (T));
-  const DeallocateFunc host_deallocate
-      = host_mt == MemType::HOST
-            ? &Memory<T>::deleteWrappedHost
-            : MemoryManager::get ().getDeallocate (host_mt);
-  const DeallocateFunc device_deallocate
-      = MemoryManager::get ().getDeallocate (device_mt);
+  record->h_alignment =
+      MemoryManager::requiredAlignment(host_mt, host_mt, alignof(T));
+  record->d_alignment =
+      MemoryManager::requiredAlignment(device_mt, device_mt, alignof(T));
+  const DeallocateFunc host_deallocate =
+      host_mt == MemType::HOST ? &Memory<T>::deleteWrappedHost
+                               : MemoryManager::get().getDeallocate(host_mt);
+  const DeallocateFunc device_deallocate =
+      MemoryManager::get().getDeallocate(device_mt);
   const bool owns_host = own && host_ptr != nullptr;
-  const bool owns_device
-      = own && device_ptr != nullptr && device_ptr != host_ptr;
-  if ((owns_host && host_deallocate == nullptr)
-      || (owns_device && device_deallocate == nullptr))
-    {
-      vfemError ("no deallocator registered for owned wrapped memory");
-      return;
-    }
+  const bool owns_device =
+      own && device_ptr != nullptr && device_ptr != host_ptr;
+  if ((owns_host && host_deallocate == nullptr) ||
+      (owns_device && device_deallocate == nullptr)) {
+    vfemError("no deallocator registered for owned wrapped memory");
+    return;
+  }
   record->h_deallocate = host_deallocate;
   record->d_deallocate = device_deallocate;
   record->owns_h       = owns_host;
   record->owns_d       = owns_device;
 
-  if (valid_host && valid_device)
-    {
-      record->state = MemoryState::SYNCHRONIZED;
-    }
-  else if (valid_host)
-    {
-      record->state = MemoryState::HOST_VALID;
-    }
-  else if (valid_device)
-    {
-      record->state = MemoryState::DEVICE_VALID;
-    }
-  else
-    {
-      record->state = MemoryState::UNINITIALIZED;
-    }
+  if (valid_host && valid_device) {
+    record->state = MemoryState::SYNCHRONIZED;
+  } else if (valid_host) {
+    record->state = MemoryState::HOST_VALID;
+  } else if (valid_device) {
+    record->state = MemoryState::DEVICE_VALID;
+  } else {
+    record->state = MemoryState::UNINITIALIZED;
+  }
 
   unsigned new_flags = Registered;
-  if (record->owns_h)
-    {
-      new_flags |= OWNS_HOST;
-    }
-  if (record->owns_d)
-    {
-      new_flags |= OWNS_DEVICE;
-    }
+  if (record->owns_h) {
+    new_flags |= OWNS_HOST;
+  }
+  if (record->owns_d) {
+    new_flags |= OWNS_DEVICE;
+  }
 
   replacement.flags    = new_flags;
-  replacement.record_  = std::move (record);
+  replacement.record_  = std::move(record);
   replacement.capacity = size;
-  replacement.refreshView ();
-  swap (replacement);
+  replacement.refreshView();
+  swap(replacement);
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::makeAlias (const Memory &base, int offset, int size)
-{
-  if (offset < 0 || size < 0 || offset > base.capacity
-      || size > base.capacity - offset)
-    {
-      vfemError ("alias range is outside the base allocation");
-      return;
-    }
-  if (size > 0 && !base.record_)
-    {
-      vfemError ("cannot alias empty memory");
-      return;
-    }
+void Memory<T>::makeAlias(const Memory &base, int offset, int size) {
+  if (offset < 0 || size < 0 || offset > base.capacity ||
+      size > base.capacity - offset) {
+    vfemError("alias range is outside the base allocation");
+    return;
+  }
+  if (size > 0 && !base.record_) {
+    vfemError("cannot alias empty memory");
+    return;
+  }
   Memory replacement;
   replacement.record_ = base.record_;
-  replacement.byte_offset_
-      = base.byte_offset_ + static_cast<std::size_t> (offset) * sizeof (T);
+  replacement.byte_offset_ =
+      base.byte_offset_ + static_cast<std::size_t>(offset) * sizeof(T);
   replacement.capacity = size;
   replacement.h_mt     = base.h_mt;
   replacement.d_mt     = base.d_mt;
   replacement.flags    = (base.flags & USE_DEVICE) | ALIAS;
-  replacement.refreshView ();
-  swap (replacement);
+  replacement.refreshView();
+  swap(replacement);
 }
 
 // operator[] returns a reference to the element at the specified index. It
@@ -1190,390 +980,289 @@ Memory<T>::makeAlias (const Memory &base, int offset, int size)
 
 // []
 
-template <DeviceCopyable T>
-inline T &
-Memory<T>::operator[] (int index)
-{
-  return readWrite (MemoryClass::HOST, capacity)[index];
+template <DeviceCopyable T> inline T &Memory<T>::operator[](int index) {
+  return readWrite(MemoryClass::HOST, capacity)[index];
 }
 
 template <DeviceCopyable T>
-inline const T &
-Memory<T>::operator[] (int index) const
-{
-  return read (MemoryClass::HOST, capacity)[index];
+inline const T &Memory<T>::operator[](int index) const {
+  return read(MemoryClass::HOST, capacity)[index];
 }
 
 // *
 
-template <DeviceCopyable T>
-Memory<T>::
-operator T *()
-{
-  return readWrite (MemoryClass::HOST, capacity);
+template <DeviceCopyable T> Memory<T>::operator T *() {
+  return readWrite(MemoryClass::HOST, capacity);
 }
 
-template <DeviceCopyable T>
-Memory<T>::
-operator const T *()
-{
-  return read (MemoryClass::HOST, capacity);
+template <DeviceCopyable T> Memory<T>::operator const T *() {
+  return read(MemoryClass::HOST, capacity);
 }
 
-template <DeviceCopyable T>
-Memory<T>::
-operator const T *() const
-{
-  return read (MemoryClass::HOST, capacity);
+template <DeviceCopyable T> Memory<T>::operator const T *() const {
+  return read(MemoryClass::HOST, capacity);
 }
 
 // U *
 
 template <DeviceCopyable T>
 template <typename U>
-inline Memory<T>::
-operator U *()
-{
-  if constexpr (std::is_const_v<U>)
-    {
-      return reinterpret_cast<U *> (read (MemoryClass::HOST, capacity));
-    }
-  else
-    {
-      return reinterpret_cast<U *> (readWrite (MemoryClass::HOST, capacity));
-    }
+inline Memory<T>::operator U *() {
+  if constexpr (std::is_const_v<U>) {
+    return reinterpret_cast<U *>(read(MemoryClass::HOST, capacity));
+  } else {
+    return reinterpret_cast<U *>(readWrite(MemoryClass::HOST, capacity));
+  }
 }
 
 template <DeviceCopyable T>
 template <typename U>
-inline Memory<T>::
-operator const U *() const
-{
-  return reinterpret_cast<const U *> (read (MemoryClass::HOST, capacity));
+inline Memory<T>::operator const U *() const {
+  return reinterpret_cast<const U *>(read(MemoryClass::HOST, capacity));
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::deleteDevice (bool copy_to_host)
-{
-  if (record_)
-    {
-      MemoryManager::get ().deleteDevice (*record_, copy_to_host);
-      refreshView ();
-    }
+template <DeviceCopyable T> void Memory<T>::deleteDevice(bool copy_to_host) {
+  if (record_) {
+    MemoryManager::get().deleteDevice(*record_, copy_to_host);
+    refreshView();
+  }
 }
 
 // error checking
 
 // Host
-template <DeviceCopyable T>
-bool
-Memory<T>::hostIsValid () const noexcept
-{
-  return record_ && isValidOn (record_->state, MemorySide::HOST);
+template <DeviceCopyable T> bool Memory<T>::hostIsValid() const noexcept {
+  return record_ && isValidOn(record_->state, MemorySide::HOST);
 }
 
 // Device
-template <DeviceCopyable T>
-bool
-Memory<T>::deviceIsValid () const noexcept
-{
-  return record_ && isValidOn (record_->state, MemorySide::DEVICE);
+template <DeviceCopyable T> bool Memory<T>::deviceIsValid() const noexcept {
+  return record_ && isValidOn(record_->state, MemorySide::DEVICE);
 }
 
 // Owns host pointer
-template <DeviceCopyable T>
-bool
-Memory<T>::ownsHostPtr () const noexcept
-{
+template <DeviceCopyable T> bool Memory<T>::ownsHostPtr() const noexcept {
   return record_ && record_->owns_h;
 }
 
 // Owns device pointer
-template <DeviceCopyable T>
-bool
-Memory<T>::ownsDevicePtr () const noexcept
-{
+template <DeviceCopyable T> bool Memory<T>::ownsDevicePtr() const noexcept {
   return record_ && record_->owns_d;
 }
 
 // set host pointer ownership
-template <DeviceCopyable T>
-void
-Memory<T>::setHostPtrOwner (bool own) noexcept
-{
-  if (record_)
-    {
-      record_->owns_h = own;
-    }
+template <DeviceCopyable T> void Memory<T>::setHostPtrOwner(bool own) noexcept {
+  if (record_) {
+    record_->owns_h = own;
+  }
   flags = own ? (flags | OWNS_HOST) : (flags & ~OWNS_HOST);
 }
 
 // Memory Class access methods
 
-template <DeviceCopyable T>
-T *
-Memory<T>::readWrite (MemoryClass mc, int size)
-{
-  if (!validAccessSize (size))
-    {
-      vfemError ("Memory access size is outside the allocated range");
-      return nullptr;
-    }
-  if (size == 0)
-    {
-      return nullptr;
-    }
-  if (!record_)
-    {
-      vfemError ("cannot access empty memory");
-      return nullptr;
-    }
+template <DeviceCopyable T> T *Memory<T>::readWrite(MemoryClass mc, int size) {
+  if (!validAccessSize(size)) {
+    vfemError("Memory access size is outside the allocated range");
+    return nullptr;
+  }
+  if (size == 0) {
+    return nullptr;
+  }
+  if (!record_) {
+    vfemError("cannot access empty memory");
+    return nullptr;
+  }
   MemorySide side;
-  if (!sideFor (mc, side))
-    {
-      return nullptr;
-    }
-  void *base
-      = MemoryManager::get ().access (*record_, side, AccessMode::READ_WRITE);
-  refreshView ();
-  return viewPointer (base);
+  if (!sideFor(mc, side)) {
+    return nullptr;
+  }
+  void *base =
+      MemoryManager::get().access(*record_, side, AccessMode::READ_WRITE);
+  refreshView();
+  return viewPointer(base);
 }
 
 template <DeviceCopyable T>
-const T *
-Memory<T>::read (MemoryClass mc, int size) const
-{
-  if (!validAccessSize (size))
-    {
-      vfemError ("Memory access size is outside the allocated range");
-      return nullptr;
-    }
-  if (size == 0)
-    {
-      return nullptr;
-    }
-  if (!record_)
-    {
-      vfemError ("cannot access empty memory");
-      return nullptr;
-    }
+const T *Memory<T>::read(MemoryClass mc, int size) const {
+  if (!validAccessSize(size)) {
+    vfemError("Memory access size is outside the allocated range");
+    return nullptr;
+  }
+  if (size == 0) {
+    return nullptr;
+  }
+  if (!record_) {
+    vfemError("cannot access empty memory");
+    return nullptr;
+  }
   MemorySide side;
-  if (!sideFor (mc, side))
-    {
-      return nullptr;
-    }
-  void *base
-      = MemoryManager::get ().access (*record_, side, AccessMode::READ_ONLY);
-  refreshView ();
-  return viewPointer (base);
+  if (!sideFor(mc, side)) {
+    return nullptr;
+  }
+  void *base =
+      MemoryManager::get().access(*record_, side, AccessMode::READ_ONLY);
+  refreshView();
+  return viewPointer(base);
 }
 
-template <DeviceCopyable T>
-T *
-Memory<T>::write (MemoryClass mc, int size)
-{
-  if (!validAccessSize (size))
-    {
-      vfemError ("Memory access size is outside the allocated range");
-      return nullptr;
-    }
-  if (size == 0)
-    {
-      return nullptr;
-    }
-  if (!record_)
-    {
-      vfemError ("cannot access empty memory");
-      return nullptr;
-    }
-  const bool whole_record
-      = byte_offset_ == 0
-        && static_cast<std::size_t> (size) * sizeof (T) == record_->bytes;
-  if (!whole_record && record_->state == MemoryState::UNINITIALIZED)
-    {
-      vfemError ("partial write requires initialized memory");
-      return nullptr;
-    }
-  const AccessMode mode
-      = whole_record ? AccessMode::WRITE_ONLY : AccessMode::READ_WRITE;
+template <DeviceCopyable T> T *Memory<T>::write(MemoryClass mc, int size) {
+  if (!validAccessSize(size)) {
+    vfemError("Memory access size is outside the allocated range");
+    return nullptr;
+  }
+  if (size == 0) {
+    return nullptr;
+  }
+  if (!record_) {
+    vfemError("cannot access empty memory");
+    return nullptr;
+  }
+  const bool whole_record =
+      byte_offset_ == 0 &&
+      static_cast<std::size_t>(size) * sizeof(T) == record_->bytes;
+  if (!whole_record && record_->state == MemoryState::UNINITIALIZED) {
+    vfemError("partial write requires initialized memory");
+    return nullptr;
+  }
+  const AccessMode mode =
+      whole_record ? AccessMode::WRITE_ONLY : AccessMode::READ_WRITE;
   MemorySide side;
-  if (!sideFor (mc, side))
-    {
-      return nullptr;
-    }
-  void *base = MemoryManager::get ().access (*record_, side, mode);
-  refreshView ();
-  return viewPointer (base);
+  if (!sideFor(mc, side)) {
+    return nullptr;
+  }
+  void *base = MemoryManager::get().access(*record_, side, mode);
+  refreshView();
+  return viewPointer(base);
 }
 
 // Copy type methods
 
 template <DeviceCopyable T>
-void
-Memory<T>::copyFrom (const Memory &other, int size)
-{
-  if (!validAccessSize (size) || !other.validAccessSize (size))
-    {
-      vfemError ("copy size is outside the allocated range");
-      return;
-    }
-  if (size == 0
-      || (record_ == other.record_ && byte_offset_ == other.byte_offset_))
-    {
-      return;
-    }
-  const T *source = other.read (MemoryClass::HOST, size);
-  if (source == nullptr)
-    {
-      return;
-    }
-  T *destination = write (MemoryClass::HOST, size);
-  if (destination != nullptr)
-    {
-      std::memmove (destination, source,
-                    static_cast<std::size_t> (size) * sizeof (T));
-    }
+void Memory<T>::copyFrom(const Memory &other, int size) {
+  if (!validAccessSize(size) || !other.validAccessSize(size)) {
+    vfemError("copy size is outside the allocated range");
+    return;
+  }
+  if (size == 0 ||
+      (record_ == other.record_ && byte_offset_ == other.byte_offset_)) {
+    return;
+  }
+  const T *source = other.read(MemoryClass::HOST, size);
+  if (source == nullptr) {
+    return;
+  }
+  T *destination = write(MemoryClass::HOST, size);
+  if (destination != nullptr) {
+    std::memmove(destination, source,
+                 static_cast<std::size_t>(size) * sizeof(T));
+  }
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::copyTo (Memory &other, int size) const
-{
-  other.copyFrom (*this, size);
+void Memory<T>::copyTo(Memory &other, int size) const {
+  other.copyFrom(*this, size);
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::copyFromHost (const T *host_ptr, int size)
-{
-  if (!validAccessSize (size) || (size > 0 && host_ptr == nullptr))
-    {
-      vfemError ("invalid host source pointer or copy size");
-      return;
+void Memory<T>::copyFromHost(const T *host_ptr, int size) {
+  if (!validAccessSize(size) || (size > 0 && host_ptr == nullptr)) {
+    vfemError("invalid host source pointer or copy size");
+    return;
+  }
+  if (size > 0) {
+    T *destination = write(MemoryClass::HOST, size);
+    if (destination != nullptr) {
+      std::memmove(destination, host_ptr,
+                   static_cast<std::size_t>(size) * sizeof(T));
     }
-  if (size > 0)
-    {
-      T *destination = write (MemoryClass::HOST, size);
-      if (destination != nullptr)
-        {
-          std::memmove (destination, host_ptr,
-                        static_cast<std::size_t> (size) * sizeof (T));
-        }
-    }
+  }
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::copyToHost (T *host_ptr, int size) const
-{
-  if (!validAccessSize (size) || (size > 0 && host_ptr == nullptr))
-    {
-      vfemError ("invalid host destination pointer or copy size");
-      return;
+void Memory<T>::copyToHost(T *host_ptr, int size) const {
+  if (!validAccessSize(size) || (size > 0 && host_ptr == nullptr)) {
+    vfemError("invalid host destination pointer or copy size");
+    return;
+  }
+  if (size > 0) {
+    const T *source = read(MemoryClass::HOST, size);
+    if (source != nullptr) {
+      std::memmove(host_ptr, source,
+                   static_cast<std::size_t>(size) * sizeof(T));
     }
-  if (size > 0)
-    {
-      const T *source = read (MemoryClass::HOST, size);
-      if (source != nullptr)
-        {
-          std::memmove (host_ptr, source,
-                        static_cast<std::size_t> (size) * sizeof (T));
-        }
-    }
+  }
+}
+
+template <DeviceCopyable T> void Memory<T>::sync(const Memory &other) const {
+  if (record_ != other.record_) {
+    vfemError("cannot synchronize memory from different records");
+    return;
+  }
+  refreshView();
 }
 
 template <DeviceCopyable T>
-void
-Memory<T>::sync (const Memory &other) const
-{
-  if (record_ != other.record_)
-    {
-      vfemError ("cannot synchronize memory from different records");
-      return;
-    }
-  refreshView ();
-}
-
-template <DeviceCopyable T>
-void
-Memory<T>::syncAlias (const Memory &base, int alias_size) const
-{
-  if (!validAccessSize (alias_size) || record_ != base.record_
-      || byte_offset_ < base.byte_offset_)
-    {
-      vfemError ("invalid alias size, memory record, or offset");
-      return;
-    }
-  const std::size_t alias_bytes = checkedBytes (alias_size);
-  const std::size_t base_bytes  = checkedBytes (base.capacity);
-  if ((alias_size > 0 && alias_bytes == 0)
-      || (base.capacity > 0 && base_bytes == 0))
-    {
-      return;
-    }
+void Memory<T>::syncAlias(const Memory &base, int alias_size) const {
+  if (!validAccessSize(alias_size) || record_ != base.record_ ||
+      byte_offset_ < base.byte_offset_) {
+    vfemError("invalid alias size, memory record, or offset");
+    return;
+  }
+  const std::size_t alias_bytes = checkedBytes(alias_size);
+  const std::size_t base_bytes  = checkedBytes(base.capacity);
+  if ((alias_size > 0 && alias_bytes == 0) ||
+      (base.capacity > 0 && base_bytes == 0)) {
+    return;
+  }
   const std::size_t relative = byte_offset_ - base.byte_offset_;
-  if (relative > base_bytes || alias_bytes > base_bytes - relative)
-    {
-      vfemError ("alias range exceeds its base range");
-      return;
-    }
-  refreshView ();
+  if (relative > base_bytes || alias_bytes > base_bytes - relative) {
+    vfemError("alias range exceeds its base range");
+    return;
+  }
+  refreshView();
 }
 
-template <DeviceCopyable T>
-void
-Memory<T>::printFlags () const
-{
-  unsigned snapshot
-      = flags
-        & ~(Registered | OWNS_HOST | OWNS_DEVICE | VALID_HOST | VALID_DEVICE);
+template <DeviceCopyable T> void Memory<T>::printFlags() const {
+  unsigned snapshot = flags & ~(Registered | OWNS_HOST | OWNS_DEVICE |
+                                VALID_HOST | VALID_DEVICE);
   snapshot |= record_ ? Registered : 0U;
-  snapshot |= ownsHostPtr () ? OWNS_HOST : 0U;
-  snapshot |= ownsDevicePtr () ? OWNS_DEVICE : 0U;
-  snapshot |= hostIsValid () ? VALID_HOST : 0U;
-  snapshot |= deviceIsValid () ? VALID_DEVICE : 0U;
-  memoryPrintFlags (snapshot);
+  snapshot |= ownsHostPtr() ? OWNS_HOST : 0U;
+  snapshot |= ownsDevicePtr() ? OWNS_DEVICE : 0U;
+  snapshot |= hostIsValid() ? VALID_HOST : 0U;
+  snapshot |= deviceIsValid() ? VALID_DEVICE : 0U;
+  memoryPrintFlags(snapshot);
 }
 
 template <DeviceCopyable T>
-int
-Memory<T>::compareHostAndDevice (int size) const
-{
-  if (!validAccessSize (size))
-    {
-      vfemError ("comparison size is outside the allocated range");
-      return 1;
-    }
-  if (size == 0)
-    {
-      return 0;
-    }
-  if (!record_ || record_->h_ptr == nullptr || record_->d_ptr == nullptr)
-    {
-      vfemError ("host and device pointers are not both available");
-      return 1;
-    }
-  const std::size_t bytes = checkedBytes (size);
-  if (bytes == 0)
-    {
-      return 1;
-    }
-  const auto *host_ptr
-      = static_cast<const unsigned char *> (record_->h_ptr) + byte_offset_;
-  const auto *device_ptr
-      = static_cast<const unsigned char *> (record_->d_ptr) + byte_offset_;
-  if (host_ptr == device_ptr)
-    {
-      return 0;
-    }
-  auto host_copy = std::make_unique_for_overwrite<unsigned char[]> (bytes);
-  if (!MemoryManager::get ().copy (host_copy.get (), MemType::HOST, device_ptr,
-                                   record_->d_mt, bytes))
-    {
-      return 1;
-    }
-  return std::memcmp (host_ptr, host_copy.get (), bytes);
+int Memory<T>::compareHostAndDevice(int size) const {
+  if (!validAccessSize(size)) {
+    vfemError("comparison size is outside the allocated range");
+    return 1;
+  }
+  if (size == 0) {
+    return 0;
+  }
+  if (!record_ || record_->h_ptr == nullptr || record_->d_ptr == nullptr) {
+    vfemError("host and device pointers are not both available");
+    return 1;
+  }
+  const std::size_t bytes = checkedBytes(size);
+  if (bytes == 0) {
+    return 1;
+  }
+  const auto *host_ptr =
+      static_cast<const unsigned char *>(record_->h_ptr) + byte_offset_;
+  const auto *device_ptr =
+      static_cast<const unsigned char *>(record_->d_ptr) + byte_offset_;
+  if (host_ptr == device_ptr) {
+    return 0;
+  }
+  auto host_copy = std::make_unique_for_overwrite<unsigned char[]>(bytes);
+  if (!MemoryManager::get().copy(host_copy.get(), MemType::HOST, device_ptr,
+                                 record_->d_mt, bytes)) {
+    return 1;
+  }
+  return std::memcmp(host_ptr, host_copy.get(), bytes);
 }
 
 } // namespace vfem

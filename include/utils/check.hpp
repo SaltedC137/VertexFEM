@@ -25,8 +25,8 @@
  *          On other compilers, they evaluate to the condition unchanged.
  */
 #if defined(__GNUC__) || defined(__clang__)
-#define LIKELY(x) __builtin_expect (!!(x), 1)
-#define UNLIKELY(x) __builtin_expect (!!(x), 0)
+#define LIKELY(x) __builtin_expect(!!(x), 1)
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #else
 #define LIKELY(x) (x)
 #define UNLIKELY(x) (x)
@@ -45,13 +45,12 @@
  * CHECK(ptr != nullptr) << "Null pointer detected";
  * @endcode
  */
-#define CHECK(conditions)                                                     \
-  LIKELY (conditions)                                                         \
-  ? (void)0                                                                   \
-  : ctl::FMessageVoidify ()                                                   \
-          & ctl::LogMessage (ctl::LogLevel::FATAL, __FILE__, __LINE__)        \
-                    .stream ()                                                \
-                << "Check failed: " #conditions " "
+#define CHECK(conditions)                                                      \
+  LIKELY(conditions)                                                           \
+  ? (void)0                                                                    \
+  : ctl::FMessageVoidify() &                                                   \
+          ctl::LogMessage(ctl::LogLevel::FATAL, __FILE__, __LINE__).stream()   \
+              << "Check failed: " #conditions " "
 
 /**
  * @brief Check equality of two values
@@ -67,14 +66,13 @@
  * CHECK_EQ(status, 0);
  * @endcode
  */
-#define CHECK_EQ(val1, val2)                                                  \
-  LIKELY ((val1) == (val2))                                                   \
-  ? (void)0                                                                   \
-  : ctl::FMessageVoidify ()                                                   \
-          & ctl::LogMessage (ctl::LogLevel::FATAL, __FILE__, __LINE__)        \
-                    .stream ()                                                \
-                << "Check failed: " #val1 " == " #val2 " (" << (val1)         \
-                << " vs " << (val2) << ") "
+#define CHECK_EQ(val1, val2)                                                   \
+  LIKELY((val1) == (val2))                                                     \
+  ? (void)0                                                                    \
+  : ctl::FMessageVoidify() &                                                   \
+          ctl::LogMessage(ctl::LogLevel::FATAL, __FILE__, __LINE__).stream()   \
+              << "Check failed: " #val1 " == " #val2 " (" << (val1) << " vs "  \
+              << (val2) << ") "
 
 /**
  * @brief Check that val1 is less than val2
@@ -90,14 +88,13 @@
  * CHECK_LT(batch_size, max_batch_size);
  * @endcode
  */
-#define CHECK_LT(val1, val2)                                                  \
-  LIKELY ((val1) < (val2))                                                    \
-  ? (void)0                                                                   \
-  : ctl::FMessageVoidify ()                                                   \
-          & ctl::LogMessage (ctl::LogLevel::FATAL, __FILE__, __LINE__)        \
-                    .stream ()                                                \
-                << "Check failed: " #val1 " < " #val2 " (" << (val1)          \
-                << " vs " << (val2) << ") "
+#define CHECK_LT(val1, val2)                                                   \
+  LIKELY((val1) < (val2))                                                      \
+  ? (void)0                                                                    \
+  : ctl::FMessageVoidify() &                                                   \
+          ctl::LogMessage(ctl::LogLevel::FATAL, __FILE__, __LINE__).stream()   \
+              << "Check failed: " #val1 " < " #val2 " (" << (val1) << " vs "   \
+              << (val2) << ") "
 
 /**
  * @brief Check that val1 is less than or equal to val2
@@ -113,14 +110,13 @@
  * CHECK_LE(score, max_score);
  * @endcode
  */
-#define CHECK_LE(val1, val2)                                                  \
-  LIKELY ((val1) <= (val2))                                                   \
-  ? (void)0                                                                   \
-  : ctl::FMessageVoidify ()                                                   \
-          & ctl::LogMessage (ctl::LogLevel::FATAL, __FILE__, __LINE__)        \
-                    .stream ()                                                \
-                << "Check failed: " #val1 " <= " #val2 " (" << (val1)         \
-                << " vs " << (val2) << ") "
+#define CHECK_LE(val1, val2)                                                   \
+  LIKELY((val1) <= (val2))                                                     \
+  ? (void)0                                                                    \
+  : ctl::FMessageVoidify() &                                                   \
+          ctl::LogMessage(ctl::LogLevel::FATAL, __FILE__, __LINE__).stream()   \
+              << "Check failed: " #val1 " <= " #val2 " (" << (val1) << " vs "  \
+              << (val2) << ") "
 
 /**
  * @brief Check that val1 is greater than or equal to val2
@@ -136,22 +132,20 @@
  * CHECK_GE(data_size, header_size);
  * @endcode
  */
-#define CHECK_GE(val1, val2)                                                  \
-  LIKELY ((val1) >= (val2))                                                   \
-  ? (void)0                                                                   \
-  : ctl::FMessageVoidify ()                                                   \
-          & ctl::LogMessage (ctl::LogLevel::FATAL, __FILE__, __LINE__)        \
-                    .stream ()                                                \
-                << "Check failed: " #val1 " >= " #val2 " (" << (val1)         \
-                << " vs " << (val2) << ") "
+#define CHECK_GE(val1, val2)                                                   \
+  LIKELY((val1) >= (val2))                                                     \
+  ? (void)0                                                                    \
+  : ctl::FMessageVoidify() &                                                   \
+          ctl::LogMessage(ctl::LogLevel::FATAL, __FILE__, __LINE__).stream()   \
+              << "Check failed: " #val1 " >= " #val2 " (" << (val1) << " vs "  \
+              << (val2) << ") "
 
-#define CHECK_GT(val1, val2)                                                  \
-  LIKELY ((val1) > (val2))                                                    \
-  ? (void)0                                                                   \
-  : ctl::FMessageVoidify ()                                                   \
-          & ctl::LogMessage (ctl::LogLevel::FATAL, __FILE__, __LINE__)        \
-                    .stream ()                                                \
-                << "Check failed: " #val1 " > " #val2 " (" << (val1)          \
-                << " vs " << (val2) << ") "
+#define CHECK_GT(val1, val2)                                                   \
+  LIKELY((val1) > (val2))                                                      \
+  ? (void)0                                                                    \
+  : ctl::FMessageVoidify() &                                                   \
+          ctl::LogMessage(ctl::LogLevel::FATAL, __FILE__, __LINE__).stream()   \
+              << "Check failed: " #val1 " > " #val2 " (" << (val1) << " vs "   \
+              << (val2) << ") "
 
 #endif // CHECK_HPP_

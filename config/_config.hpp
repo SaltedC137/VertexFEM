@@ -5,14 +5,14 @@
 #define VFEM_USE_CUDA_OR_HIP
 #endif
 
-#if (defined(VFEM_USE_CUDA) && defined(__CUDACC__))                           \
-    || (defined(VFEM_USE_HIP) && (defined(__HIPCC__) || defined(__HIP__)))
+#if (defined(VFEM_USE_CUDA) && defined(__CUDACC__)) ||                         \
+    (defined(VFEM_USE_HIP) && (defined(__HIPCC__) || defined(__HIP__)))
 #define VFEM_USE_CUDA_OR_HIP_LANG
 #define VFEM_HOST_DEVICE __host__ __device__
 #define VFEM_DEVICE __device__
 #define VFEM_HOST __host__
 #define VFEM_LAMBDA __host__ __device__
-#define VFEM_LAUNCH_BOUNDS(...) __launch_bounds__ (__VA_ARGS__)
+#define VFEM_LAUNCH_BOUNDS(...) __launch_bounds__(__VA_ARGS__)
 #else
 #define VFEM_HOST_DEVICE
 #define VFEM_DEVICE
