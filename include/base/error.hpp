@@ -143,3 +143,17 @@ inline void vfemWarning(
                                             << (begin) << ',' << (end) << ')')
 
 #endif // VFEM_ERROR_HPP
+
+// HPC hot path
+#ifndef VFEM_HOT_ASSERT
+#ifndef NDEBUG
+#define VFEM_HOT_ASSERT(cond, msg)                                             \
+  do {                                                                         \
+    if (!(cond)) [[unlikely]] {                                                \
+      vfemError(msg);                                                          \
+    }                                                                          \
+  } while (0)
+#else
+#define VFEM_HOT_ASSERT(cond, msg) ((void)0)
+#endif
+#endif
