@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <type_traits>
 #ifndef VFEM_ARRAY_HPP
 #define VFEM_ARRAY_HPP
@@ -174,8 +176,52 @@ public:
     memory_.wrap(p, n, MemType::HOST, own);
     size_ = n;
   }
+  // Wraps an existing pointer with specified memory type and ownership
+  Array(T *p, int n, MemType mt, bool own) {
+    memory_.wrap(p, n, mt, own);
+    size_ = n;
+  }
 
+  Array(std::initializer_list<T> init)
+      : memory_(static_cast<int>(init.size())),
+        size_(static_cast<int>(init.size())) {
+    if (size_ > 0) {
+      T *dst_ = acquireWrite(MemorySide::HOST, size_);
+      std::ranges::copy(init, dst_);
+    }
+  }
 
+  template <std::ranges::sized_range R>
+    requires(!std::same_as<std::remove_cvref_t<R>, Array<T>> &&
+             std::convertible_to<std::ranges::range_value_t<R>, T>)
+  explicit Array(R &&range)
+      : Array(static_cast<int>(std::ranges::size(range))) {
+    if (size_ > 0) {
+      T *dst = acquireWrite(MemorySide::HOST, size_);
+      std::ranges::copy(range, dst);
+    }
+  }
+
+  Array(const Array &other)
+      : memory_(allocateLike(other.memory_, size_)), size_(other.size_) {
+    if (size_ > 0) {
+      if constexpr (requires { memory_.copyFrom(other.memory_, size_); }) {
+        memory_.copyFrom(other.memory_, size_);
+      } else {
+        const T *src = other.acquireRead(MemorySide::HOST, size_);
+        T *dst       = acquireWrite(MemorySide::HOST, size_);
+        std::memcpy(dst, src, byteSize());
+      }
+    }
+  }
+
+  // size, capacity, empty, byteSize
+  int size() const noexcept { return size_; }
+  int capacity() const noexcept { return memory_.capacity(); }
+  bool empty() const noexcept { return size_ == 0; }
+  std::size_t byteSize() const noexcept {
+    return static_cast<std::size_t>(size_) * sizeof(T);
+  }
 };
 
 template <ArrayElement T> class Matrix {
