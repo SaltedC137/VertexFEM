@@ -15,7 +15,7 @@
 #include <iostream>
 #include <sstream>
 
-namespace ctl {
+namespace vfem::ctl {
 
 /**
  * @brief Enumeration of logging severity levels
@@ -137,6 +137,6 @@ public:
        : ctl::FMessageVoidify() &                                              \
              ctl::LogMessage(ctl::LogLevel::level, __FILE__, __LINE__)         \
                  .stream())
-} // namespace ctl
+} // namespace vfem::ctl
 
 #endif // LOG_HPP_

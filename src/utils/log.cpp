@@ -10,7 +10,7 @@
 #include <iomanip>
 #include <mutex>
 
-namespace ctl {
+namespace vfem::ctl {
 
 #define COLOR_RESET "\033[0m"    //  reset
 #define COLOR_DEBUG "\033[36m"   //  (Cyan)
@@ -80,4 +80,4 @@ LogMessage::~LogMessage() {
 // Return the stream for chaining log output
 std::ostream &LogMessage::stream() { return stream_; }
 
-} // namespace ctl
+} // namespace vfem::ctl

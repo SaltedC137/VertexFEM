@@ -29,7 +29,7 @@ OutStream err(std::cerr);
 void OutStream::setStream(std::ostream &os) {
   rdbuf(m_rdbuf = os.rdbuf());
   tie(m_tie = os.tie());
-  Init();
+  init();
 }
 
 bool OutStream::isEnabled() const noexcept { return (rdbuf() == m_rdbuf); }

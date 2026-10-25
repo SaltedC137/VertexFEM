@@ -53,9 +53,10 @@ public:
   int size() const noexcept { return size_; }
   bool empty() const noexcept { return size_ == 0; }
 
-  reference operator[](int i) const noexcept {
-    VFEM_HOT_ASSERT(i >= 0 && i < size_, "AccessGuard::operator[]: OOB");
-    return ptr_[i];
+  reference operator[](int index) const noexcept {
+    VFEM_HOT_ASSERT(index >= 0 && index < size_,
+                    "AccessGuard::operator[]: OOB");
+    return ptr_[index];
   }
 
   iterator begin() const noexcept { return ptr_; }
@@ -68,8 +69,8 @@ public:
   }
 
   // RAII for releasing the access guard
-  AccessGuard(const AccessGuard &)             = delete;
-  AccessGuard(&operator=(const AccessGuard &)) = delete;
+  AccessGuard(const AccessGuard &)            = delete;
+  AccessGuard &operator=(const AccessGuard &) = delete;
 
   AccessGuard(AccessGuard &&other) noexcept
       : ptr_(other.ptr_), size_(other.size_), owner_(other.owner_) {
@@ -96,13 +97,85 @@ template <ArrayElement T> class Array {
 
 protected:
   Memory<T> memory_;
+  int size_{0};
+  mutable int active_guards_ = {0};
 
 public:
   using value_type      = T;
   using size_type       = std::size_t;
   using difference_type = std::ptrdiff_t;
+  using reference       = T &;
+  using const_reference = const T &;
+  using pointer         = T *;
+  using const_pointer   = const T *;
+  // iterator on class array
+  using iterator               = T *;
+  using const_iterator         = const T *;
+  using reverse_iterator       = std::reverse_iterator<iterator>;
+  using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 private:
+  template <ArrayElement, MemorySide, AccessMode> friend class AccessGuard;
+
+  const T *acquireRead(MemorySide side, int count) const;
+  T *acquireWrite(MemorySide side, int count);
+  T *acquireRW(MemorySide side, int count);
+
+  void growTo(int min_capacity);
+  void shrinkTosize();
+
+  void ensureNoActiveGuards(const char *op) const {
+    if (active_guards_ > 0) [[unlikely]] {
+      vfemError(std::string("Array::") + op +
+                ": cannot modify structure while AccessGuard is alive");
+    }
+  }
+
+  static constexpr MemoryClass toMc(MemorySide s) noexcept {
+    return s == MemorySide::HOST ? MemoryClass::HOST : MemoryClass::DEVICE;
+  }
+
+  // bool isUnintialized() const noexcept {
+  //   return capacity() > 0 && !memory_.hostIsValid() &&
+  //   !memory_.deviceIsValid();
+  // }
+
+  static Memory<T> allocateLike(const Memory<T> &proto, int cap) {
+    if constexpr (requires {
+                    proto.getHostMemType();
+                    proto.getDeviceMemType();
+                  }) {
+      Memory<T> m(cap, proto.getHostMemType(), proto.getDeviceMemType());
+      m.useDevice(proto.useDevice());
+      return m;
+    } else if constexpr (requires {
+                           proto.hostMemType();
+                           proto.deviceMemType();
+                         }) {
+      Memory<T> m(cap, proto.hostMemType(), proto.deviceMemType());
+      m.useDevice(proto.useDevice());
+      return m;
+    } else {
+      Memory<T> m(cap);
+      m.useDevice(proto.useDevice());
+      return m;
+    }
+  }
+
+public:
+  Array() noexcept = default;
+
+  explicit Array(MemType mt) : memory_(mt) {}
+  explicit Array(int n) : memory_(n), size_(n) {}
+  Array(int n, MemType mt) : memory_(n, mt), size_(n) {}
+  Array(int n, MemType h_mt, MemType d_mt) : memory_(n, h_mt, d_mt), size_(n) {}
+
+  Array(T *p, int n, bool own) {
+    memory_.wrap(p, n, MemType::HOST, own);
+    size_ = n;
+  }
+
+
 };
 
 template <ArrayElement T> class Matrix {
