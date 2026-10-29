@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <initializer_list>
 #include <type_traits>
@@ -137,10 +138,9 @@ private:
     return s == MemorySide::HOST ? MemoryClass::HOST : MemoryClass::DEVICE;
   }
 
-  // bool isUnintialized() const noexcept {
-  //   return capacity() > 0 && !memory_.hostIsValid() &&
-  //   !memory_.deviceIsValid();
-  // }
+  bool isUnintialized() const noexcept {
+    return capacity() > 0 && !memory_.hostIsValid() && !memory_.deviceIsValid();
+  }
 
   static Memory<T> allocateLike(const Memory<T> &proto, int cap) {
     if constexpr (requires {
@@ -213,6 +213,29 @@ public:
         std::memcpy(dst, src, byteSize());
       }
     }
+  }
+
+  // Copy constructor for Array with different element type, provided that the
+  // conversion is possible.
+  template <ArrayElement CT>
+    requires(!std::same_as<CT, T> && std::convertible_to<CT, T>)
+  explicit Array(const Array<CT> &other)
+      : memory_(other.size()), size_(other.size()) {
+    memory_.useDevice(other.useDevice());
+    if (size_ > 0) {
+      auto src = other.host_read();
+      T *dst   = acquireWrite(MemorySide::HOST, size_);
+      for (int i = 0; i < size_; ++i) {
+        dst[i] = static_cast<T>(src[i]);
+      }
+    }
+  }
+
+  Array(Array &&other) noexcept
+      : memory_(std::move(other.memory_)), size_(other.size_) {
+    VFEM_HOT_ASSERT(other.active_guards_ == 0,
+                    "Array(Array&&): moving Array with active AccessGuard");
+    other.size_ = 0;
   }
 
   // size, capacity, empty, byteSize
