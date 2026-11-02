@@ -238,6 +238,17 @@ public:
     other.size_ = 0;
   }
 
+  ~Array() = default;
+
+  Array &operator=(const Array &other) {
+    if (this != other) {
+      ensureNoActiveGuards("operator=(const  Array&)");
+      Array tmp(other);
+      swap(tmp);
+    }
+    return *this;
+  }
+
   // size, capacity, empty, byteSize
   int size() const noexcept { return size_; }
   int capacity() const noexcept { return memory_.capacity(); }
