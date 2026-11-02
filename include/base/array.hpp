@@ -240,11 +240,42 @@ public:
 
   ~Array() = default;
 
+  //  operators
+
   Array &operator=(const Array &other) {
-    if (this != other) {
+    if (this != &other) {
       ensureNoActiveGuards("operator=(const  Array&)");
       Array tmp(other);
       swap(tmp);
+    }
+    return *this;
+  }
+
+  Array &operator=(Array &&other) noexcept {
+    if (this != &other) {
+      ensureNoActiveGuards("operator=(const Array&&)");
+      VFEM_HOT_ASSERT(
+          other.active_guards_ == 0,
+          "Array::operator=(Array&&): source has active AccessGuard");
+
+      memory_     = std::move(other.memory_);
+      size_       = other.size_;
+      other.size_ = 0;
+    }
+    return *this;
+  }
+
+  template <ArrayElement CT>
+    requires(!std::same_as<CT, T> && std::convertible_to<CT, T>)
+  Array &operator=(const Array<CT> &other) {
+    ensureNoActiveGuards("operator=(const Array<CT>&)");
+    set_size(other.size());
+    if (size_ > 0) {
+      auto src = other.host_read();
+      T *dst   = acquireWrite(MemorySide::HOST, size_);
+      for (int i = 0; i < size_; ++i) {
+        dst[i] = static_cast<T>(src[i]);
+      }
     }
     return *this;
   }
@@ -255,6 +286,19 @@ public:
   bool empty() const noexcept { return size_ == 0; }
   std::size_t byteSize() const noexcept {
     return static_cast<std::size_t>(size_) * sizeof(T);
+  }
+
+  void setSize(int n) {
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::set_size: negative");
+      return;
+    }
+    ensureNoActiveGuards("set_size");
+    if (n > capacity()) {
+      Memory<T> new_mem = allocate_like(memory_, n);
+      memory_           = std::move(new_mem);
+    }
+    size_ = n;
   }
 };
 
