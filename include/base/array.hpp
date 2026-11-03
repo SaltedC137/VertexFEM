@@ -203,7 +203,7 @@ public:
   }
 
   Array(const Array &other)
-      : memory_(allocateLike(other.memory_, size_)), size_(other.size_) {
+      : memory_(allocateLike(other.memory_, other.size_)), size_(other.size_) {
     if (size_ > 0) {
       if constexpr (requires { memory_.copyFrom(other.memory_, size_); }) {
         memory_.copyFrom(other.memory_, size_);
@@ -223,7 +223,7 @@ public:
       : memory_(other.size()), size_(other.size()) {
     memory_.useDevice(other.useDevice());
     if (size_ > 0) {
-      auto src = other.host_read();
+      auto src = other.hostRead();
       T *dst   = acquireWrite(MemorySide::HOST, size_);
       for (int i = 0; i < size_; ++i) {
         dst[i] = static_cast<T>(src[i]);
@@ -271,7 +271,7 @@ public:
     ensureNoActiveGuards("operator=(const Array<CT>&)");
     set_size(other.size());
     if (size_ > 0) {
-      auto src = other.host_read();
+      auto src = other.hostRead();
       T *dst   = acquireWrite(MemorySide::HOST, size_);
       for (int i = 0; i < size_; ++i) {
         dst[i] = static_cast<T>(src[i]);
