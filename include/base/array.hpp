@@ -280,6 +280,57 @@ public:
     return *this;
   }
 
+  // factory reference rebinding methods
+
+  [[nodiscard]] static Array<T> aliasOf(const Array &base) {
+    Array out;
+    out.memory_.makeAlias(base.memory_, 0, base.size_);
+    out.size_ = base.size_;
+    return out;
+  }
+
+  [[nodiscard]] static Array<T> aliasOf(const Array &base, int offset, int n) {
+    if (offset < 0 || n < 0 || offset + n > base.size_) [[unlikely]] {
+      vfemError("Array::alias_of: range out of bounds");
+      return {};
+    }
+    Array out;
+    out.memory_.makeAlias(base.memory_, offset, n);
+    out.size_ = n;
+    return out;
+  }
+
+  [[nodiscard]] static Array<T> warp(T *p, int n, MemType mt, bool own) {
+    Array out;
+    out.memory_.wrap(p, n, mt, own);
+    out.size_ = n;
+    return out;
+  }
+
+  // HPC zero-copy
+
+  void makeRef(const Array &base, int offset, int n) {
+    ensureNoActiveGuards("makeRef");
+    if (offset < 0 || n < 0 || offset + n > base.size_) [[unlikely]] {
+      vfemError("Array::make_ref: range out of bounds");
+      return;
+    }
+    memory_.makeAlias(base.memory_, offset, n);
+    size_ = n;
+  }
+
+  void makeRef(const Array &base) { makeRef(base, 0, base.size_); }
+
+  void makeRef(T *p, int n, MemType mt = MemType::HOST, bool own = false) {
+    ensureNoActiveGuards("makeRef(ptr)");
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::make_ref: negative size");
+      return;
+    }
+    memory_.wrap(p, n, mt, own);
+    size_ = n;
+  }
+
   // size, capacity, empty, byteSize
   int size() const noexcept { return size_; }
   int capacity() const noexcept { return memory_.capacity(); }
@@ -293,7 +344,7 @@ public:
       vfemError("Array::set_size: negative");
       return;
     }
-    ensureNoActiveGuards("set_size");
+    ensureNoActiveGuards("setSize");
     if (n > capacity()) {
       Memory<T> new_mem = allocate_like(memory_, n);
       memory_           = std::move(new_mem);
