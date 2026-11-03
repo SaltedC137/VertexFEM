@@ -120,12 +120,12 @@ public:
 private:
   template <ArrayElement, MemorySide, AccessMode> friend class AccessGuard;
 
-  const T *acquireRead(MemorySide side, int count) const;
-  T *acquireWrite(MemorySide side, int count);
-  T *acquireRW(MemorySide side, int count);
+  // const T *acquireRead(MemorySide side, int count) const;
+  // T *acquireWrite(MemorySide side, int count);
+  // T *acquireRW(MemorySide side, int count);
 
-  void growTo(int min_capacity);
-  void shrinkTosize();
+  // void growTo(int min_capacity);
+  // void shrinkTosize();
 
   void ensureNoActiveGuards(const char *op) const {
     if (active_guards_ > 0) [[unlikely]] {
@@ -162,6 +162,83 @@ private:
       m.useDevice(proto.useDevice());
       return m;
     }
+  }
+
+  const T *acquireRead(MemorySide side, int count) const {
+    if (count < 0 || count > size_) [[unlikely]] {
+      vfemError("Array::acquireRead: invalid count");
+      return nullptr;
+    }
+    if (count == 0) {
+      return nullptr;
+    }
+    return memory_.read(toMc(side), count);
+  }
+
+  T *acquireWrite(MemorySide side, int count) {
+    if (count < 0 || count > size_) [[unlikely]] {
+      vfemError("Array::acquireWrite: invalid count");
+      return nullptr;
+    }
+    if (count == 0) {
+      return nullptr;
+    }
+    if (isUnintialized()) {
+      return memory_.write(toMc(side), capacity());
+    }
+    return memory_.write(toMc(side), count);
+  }
+
+  T *acquireRW(MemorySide side, int count) {
+    if (count < 0 || count > size_) [[unlikely]] {
+      vfemError("Array::acquireRW: invalid count");
+      return nullptr;
+    }
+    if (count == 0) {
+      return nullptr;
+    }
+    if (isUnintialized()) {
+      return memory_.write(toMc(side), capacity());
+    }
+    return memory_.readWrite(toMc(side), count);
+  }
+
+  void growTo(int min_capacity) {
+    const int cur_cap = capacity();
+    const int new_cap = (cur_cap > std::numeric_limits<int>::max() / 2)
+                            ? min_capacity
+                            : std::max(min_capacity, 2 * cur_cap);
+
+    Memory<T> new_mem = allocateLike(memory_, new_cap);
+    if (size_ > 0) {
+      if constexpr (requires { new_mem.copyFrom(memory_, size_); }) {
+        new_mem.copyFrom(memory_, size_);
+      } else {
+        const T *old = acquireRead(MemorySide::HOST, size_);
+        T *dst       = new_mem.write(MemoryClass::HOST, new_cap);
+        std::memcpy(dst, old, byteSize());
+      }
+    }
+    memory_ = std::move(new_mem);
+  }
+
+  void shrinkToSize() {
+    if (size_ == capacity()) {
+      return;
+    }
+    if (size_ == 0) {
+      memory_.reset();
+      return;
+    }
+    Memory<T> new_mem = allocateLike(memory_, size_);
+    if constexpr (requires { new_mem.copyFrom(memory_, size_); }) {
+      new_mem.copyFrom(memory_, size_);
+    } else {
+      const T *old = acquireRead(MemorySide::HOST, size_);
+      T *dst       = new_mem.write(MemoryClass::HOST, size_);
+      std::memcpy(dst, old, byteSize());
+    }
+    memory_ = std::move(new_mem);
   }
 
 public:
