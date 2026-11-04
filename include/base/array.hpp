@@ -412,10 +412,15 @@ public:
   int size() const noexcept { return size_; }
   int capacity() const noexcept { return memory_.capacity(); }
   bool empty() const noexcept { return size_ == 0; }
+
+  // memory usage in bytes
   std::size_t byteSize() const noexcept {
     return static_cast<std::size_t>(size_) * sizeof(T);
   }
-
+  std::size_t byteCapacity() const noexcept {
+    return static_cast<std::size_t>(capacity()) * sizeof(T);
+  }
+  std::size_t memoryUsage() const noexcept { return byteCapacity(); }
   void setSize(int n) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::set_size: negative");
