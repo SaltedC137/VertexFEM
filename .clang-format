@@ -4,7 +4,6 @@ Standard: c++20
 
 IndentWidth: 2
 TabWidth: 2
-SortIncludes: CaseSensitive
 IndentCaseLabels: false
 
 AlignConsecutiveAssignments:

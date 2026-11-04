@@ -8,9 +8,9 @@
 #ifndef VFEM_ARRAY_HPP
 #define VFEM_ARRAY_HPP
 
-#include "config.hpp"
+#include "config.hpp" // IWYU pragma: keep
 #include "error.hpp"
-#include "global.hpp"
+#include "global.hpp" // IWYU pragma: keep
 #include "mem_manager.hpp"
 
 #include <cassert>
@@ -38,7 +38,7 @@ template <ArrayElement T> class Tensor; // 3 demensions
 
 template <ArrayElement T, MemorySide S, AccessMode M> class AccessGuard;
 
-//
+// AccessGuard Lock
 template <ArrayElement T, MemorySide S, AccessMode M> class AccessGuard {
   static constexpr bool IsReadOnly = (M == AccessMode::READ_ONLY);
   using PointerType = std::conditional_t<IsReadOnly, const T *, T *>;
@@ -94,8 +94,24 @@ private:
   Array<T> *owner_{nullptr};
 };
 
-// unfinish
+// RAII Access Guard Type Aliases
+template <ArrayElement T>
+using HostReadGuard = AccessGuard<T, MemorySide::HOST, AccessMode::READ_ONLY>;
+template <ArrayElement T>
+using HostWriteGuard = AccessGuard<T, MemorySide::HOST, AccessMode::WRITE_ONLY>;
+template <ArrayElement T>
+using HostRWGuard = AccessGuard<T, MemorySide::HOST, AccessMode::READ_WRITE>;
+template <ArrayElement T>
+using DeviceReadGuard =
+    AccessGuard<T, MemorySide::DEVICE, AccessMode::READ_ONLY>;
+template <ArrayElement T>
+using DeviceWriteGuard =
+    AccessGuard<T, MemorySide::DEVICE, AccessMode::WRITE_ONLY>;
+template <ArrayElement T>
+using DeviceRWGuard =
+    AccessGuard<T, MemorySide::DEVICE, AccessMode::READ_WRITE>;
 
+// unfinish
 template <ArrayElement T> class Array {
 
 protected:
@@ -429,10 +445,12 @@ public:
     }
   }
 
-  // void shrinkToFit(){
-  //   ensureNoActiveGuards("shrinkToFit");
-  //   shrinkToSize();
-  // }
+  void shrinkToFit() {
+    ensureNoActiveGuards("shrinkToFit");
+    shrinkToSize();
+  }
+
+  // resize function
 
   void resize(int n) {
     if (n < 0) [[unlikely]] {
@@ -446,6 +464,29 @@ public:
     size_ = n;
   }
 
+  void resize(int n, const T &v) {
+    const int old = size_;
+    resize(n);
+    if (n > old) {
+      T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
+                        : acquireRW(MemorySide::HOST, size_);
+      std::fill(p + old, p + n, v);
+    }
+  }
+
+  void resize(int n, MemType mt) {
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::resize: negative");
+      return;
+    }
+    ensureNoActiveGuards("resize(n, mt)");
+    const bool use_dev = memory_.useDevice();
+    Memory<T> new_mem(n, mt);
+    new_mem.useDevice(use_dev);
+    memory_ = std::move(new_mem);
+    size_   = n;
+  }
+
   void setSize(int n) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::set_size: negative");
@@ -457,6 +498,39 @@ public:
       memory_           = std::move(new_mem);
     }
     size_ = n;
+  }
+  void setSize(int n, MemType mt) { resize(n, mt); }
+
+  void clear() noexcept {
+    VFEM_HOT_ASSERT(active_guards_ == 0, "Array::clear: active guard alive");
+    size_ = 0;
+  }
+
+  // AccessGuard factory methods
+  [[nodiscard]] HostReadGuard<T> hostRead() const {
+    return {acquireRead(MemorySide::HOST, size_), size_,
+            const_cast<Array *>(this)};
+  }
+
+  [[nodiscard]] HostWriteGuard<T> hostWrite() {
+    return {acquireWrite(MemorySide::HOST, size_), size_, this};
+  }
+
+  [[nodiscard]] HostRWGuard<T> hostRW() {
+    return {acquireRW(MemorySide::HOST, size_), size_, this};
+  }
+
+  [[nodiscard]] DeviceReadGuard<T> deviceRead() const {
+    return {acquireRead(MemorySide::DEVICE, size_), size_,
+            const_cast<Array *>(this)};
+  }
+
+  [[nodiscard]] DeviceWriteGuard<T> deviceWrite() {
+    return {acquireWrite(MemorySide::DEVICE, size_), size_, this};
+  }
+
+  [[nodiscard]] DeviceRWGuard<T> deviceRW() {
+    return {acquireRW(MemorySide::DEVICE, size_), size_, this};
   }
 };
 
