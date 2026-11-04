@@ -421,6 +421,31 @@ public:
     return static_cast<std::size_t>(capacity()) * sizeof(T);
   }
   std::size_t memoryUsage() const noexcept { return byteCapacity(); }
+
+  void reserve(int n) {
+    ensureNoActiveGuards("reserve");
+    if (n > capacity()) [[unlikely]] {
+      growTo(n);
+    }
+  }
+
+  // void shrinkToFit(){
+  //   ensureNoActiveGuards("shrinkToFit");
+  //   shrinkToSize();
+  // }
+
+  void resize(int n) {
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::resize: negative");
+      return;
+    }
+    ensureNoActiveGuards("resize");
+    if (n > capacity()) {
+      growTo(n);
+    }
+    size_ = n;
+  }
+
   void setSize(int n) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::set_size: negative");
