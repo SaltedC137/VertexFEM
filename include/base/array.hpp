@@ -25,35 +25,85 @@
 
 namespace vfem {
 
+/**
+ * @concept ArrayElement
+ * @brief Constrains element types usable within Array, Matrix, and Tensor
+ * containers.
+ *
+ * Requires `T` to satisfy `DeviceCopyable<T>`, mandating
+ * `std::is_trivially_copyable_v<T>` and `std::is_standard_layout_v<T>`. This
+ * ensures:
+ * - Bitwise copyability (POD-like layout) required for Host <-> Device data
+ * transfers (via cudaMemcpy, OpenMP target offload, or DMA) managed by
+ * MemoryManager.
+ * - Consistent byte layout, member offsets, and alignment across host and
+ * device compilers.
+ * - Exclusion of types with virtual tables (vptr), non-trivial destructors, or
+ * dynamic heap pointers.
+ */
 template <typename T>
 concept ArrayElement = DeviceCopyable<T>;
 
-template <ArrayElement T> class Array;  // 1 demension
-template <ArrayElement T> class Matrix; // 2 demensions
-template <ArrayElement T> class Tensor; // 3 demensions
-
-// AccessGuard is a helper class that provides safe access to the underlying
-// data of an Array, Matrix, or Tensor object. It ensures that the data is
-// properly synchronized between host and device memory, and that the
-// appropriate access mode (read-only, write-only, or read-write) is
-// enforced.
+template <ArrayElement T> class Array;
+template <ArrayElement T> class Matrix;
+template <ArrayElement T> class Tensor;
 
 template <ArrayElement T, MemorySide S, AccessMode M> class AccessGuard;
 
-// AccessGuard Lock
+/**
+ * @class AccessGuard
+ * @brief Scoped RAII access guard managing data synchronization, access
+ * privilege, and structural locking.
+ *
+ * AccessGuard provides direct pointer access to the memory buffer of an Array
+ * on a specified MemorySide with compile-time access mode enforcement.
+ *
+ * ### Dual-Memory Architecture & State Synchronization
+ * When created via container accessors (e.g. hostRead(), deviceWrite()), the
+ * underlying MemoryManager evaluates the container's MemoryState (EMPTY,
+ * UNINITIALIZED, HOST_VALID, DEVICE_VALID, SYNCHRONIZED):
+ * - @b READ_ONLY: If data on the requested side is stale, an automatic transfer
+ * (D2H or H2D) is issued, transitioning the state to
+ * `MemoryState::SYNCHRONIZED`.
+ * - @b WRITE_ONLY: Bypasses data transfer, marks the target side as exclusively
+ * valid
+ *   (`HOST_VALID` or `DEVICE_VALID`), and invalidates the opposite side.
+ * - @b READ_WRITE: Synchronizes stale data to the target side if necessary,
+ * then marks the target side as exclusively valid, invalidating the opposite
+ * side for subsequent writes.
+ *
+ * ### Access Privilege Enforcement
+ * - If `M == AccessMode::READ_ONLY`, `pointer` resolves to `const T*` and
+ * `reference` to `const T&`.
+ * - If `M == AccessMode::WRITE_ONLY` or `AccessMode::READ_WRITE`, `pointer`
+ * resolves to `T*` and `reference` to `T&`.
+ *
+ * ### Structural Modification Locking (Container Pinning)
+ * Upon acquisition, the guard atomically increments the parent Array's
+ * `active_guards_` counter. While any guard is active, structural mutations on
+ * the Array (resize(), reserve(), setSize(), clear(), reallocation) are
+ * prohibited and will raise an error via `ensureNoActiveGuards()`. Upon
+ * destruction or release, `active_guards_` is decremented.
+ *
+ * AccessGuard is non-copyable (move-only) to guarantee unique RAII ownership of
+ * each active lease.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ * @tparam S Target memory side (MemorySide::HOST or MemorySide::DEVICE).
+ * @tparam M Access mode (AccessMode::READ_ONLY, AccessMode::WRITE_ONLY, or
+ * AccessMode::READ_WRITE).
+ */
 template <ArrayElement T, MemorySide S, AccessMode M> class AccessGuard {
   static constexpr bool IsReadOnly = (M == AccessMode::READ_ONLY);
   using PointerType = std::conditional_t<IsReadOnly, const T *, T *>;
 
 public:
-  //
   using value_type      = T;
   using pointer         = PointerType;
   using reference       = std::conditional_t<IsReadOnly, const T &, T &>;
   using iterator        = pointer;
   using difference_type = std::ptrdiff_t;
 
-  // hot path for accessing the underlying data pointer
   pointer data() const noexcept { return ptr_; }
   int size() const noexcept { return size_; }
   bool empty() const noexcept { return size_ == 0; }
@@ -73,7 +123,6 @@ public:
     return {ptr_, static_cast<std::size_t>(size_)};
   }
 
-  // RAII for releasing the access guard
   AccessGuard(const AccessGuard &)            = delete;
   AccessGuard &operator=(const AccessGuard &) = delete;
 
@@ -101,6 +150,7 @@ public:
 
 private:
   friend class Array<T>;
+
   AccessGuard(pointer p, int n, Array<T> *owner) noexcept
       : ptr_(p), size_(n), owner_(owner) {
     if (owner_) {
@@ -117,30 +167,114 @@ private:
     size_ = 0;
   }
 
-  // pointer to control
   pointer ptr_{nullptr};
   int size_{0};
   Array<T> *owner_{nullptr};
 };
 
-// RAII Access Guard Type Aliases
+/**
+ * @brief Host read-only access guard.
+ *
+ * Provides `const T*` pointer access to host memory. Triggers a Device-to-Host
+ * (D2H) transfer if current state is `DEVICE_VALID`, updating state to
+ * `MemoryState::SYNCHRONIZED`. Pins container structure against reallocation
+ * while active.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ */
 template <ArrayElement T>
 using HostReadGuard = AccessGuard<T, MemorySide::HOST, AccessMode::READ_ONLY>;
+
+/**
+ * @brief Host write-only access guard.
+ *
+ * Provides mutable `T*` pointer access to host memory. Bypasses D2H transfer,
+ * marks host data as exclusively valid (`MemoryState::HOST_VALID`), and
+ * invalidates any device copy. Pins container structure against reallocation
+ * while active.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ */
 template <ArrayElement T>
 using HostWriteGuard = AccessGuard<T, MemorySide::HOST, AccessMode::WRITE_ONLY>;
+
+/**
+ * @brief Host read-write access guard.
+ *
+ * Provides mutable `T*` pointer access to host memory. Triggers D2H transfer if
+ * current state is `DEVICE_VALID`, then marks host data as exclusively valid
+ * (`MemoryState::HOST_VALID`), invalidating the device copy. Pins container
+ * structure against reallocation while active.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ */
 template <ArrayElement T>
 using HostRWGuard = AccessGuard<T, MemorySide::HOST, AccessMode::READ_WRITE>;
+
+/**
+ * @brief Device (GPU) read-only access guard.
+ *
+ * Provides `const T*` pointer access to device memory for GPU kernels or
+ * accelerator routines. Triggers a Host-to-Device (H2D) transfer if current
+ * state is `HOST_VALID`, updating state to `MemoryState::SYNCHRONIZED`. Pins
+ * container structure against reallocation while active.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ */
 template <ArrayElement T>
 using DeviceReadGuard =
     AccessGuard<T, MemorySide::DEVICE, AccessMode::READ_ONLY>;
+
+/**
+ * @brief Device (GPU) write-only access guard.
+ *
+ * Provides mutable `T*` pointer access to device memory for GPU kernels.
+ * Bypasses H2D transfer, marks device data as exclusively valid
+ * (`MemoryState::DEVICE_VALID`), and invalidates the host copy. Pins container
+ * structure against reallocation while active.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ */
 template <ArrayElement T>
 using DeviceWriteGuard =
     AccessGuard<T, MemorySide::DEVICE, AccessMode::WRITE_ONLY>;
+
+/**
+ * @brief Device (GPU) read-write access guard.
+ *
+ * Provides mutable `T*` pointer access to device memory. Triggers H2D transfer
+ * if current state is `HOST_VALID`, then marks device data as exclusively valid
+ * (`MemoryState::DEVICE_VALID`), invalidating the host copy. Pins container
+ * structure against reallocation while active.
+ *
+ * @tparam T Element type satisfying ArrayElement.
+ */
 template <ArrayElement T>
 using DeviceRWGuard =
     AccessGuard<T, MemorySide::DEVICE, AccessMode::READ_WRITE>;
 
-// unfinish
+/**
+ * @class Array
+ * @brief 1D dense array supporting heterogeneous memory, zero-copy wrapping,
+ * lazy synchronization, and RAII guard tracking.
+ *
+ * @details Array manages a contiguous 1D buffer backed by @c Memory<T>,
+ * abstracting dual-space memory management between Host (CPU) and Device
+ * (GPU/accelerator). Key features include:
+ * - Lazy data synchronization: Migrates data on demand between Host and Device
+ * upon request, tracking state transitions (UNINITIALIZED, HOST_VALID,
+ * DEVICE_VALID, SYNCHRONIZED).
+ * - Zero-copy wrapping & aliasing: Wraps external pointers or creates sub-views
+ * without copying.
+ * - RAII access guard tracking: Tracks active @c AccessGuard references via
+ * atomic @c active_guards_ to prevent structural reallocations while raw
+ * pointers are in use.
+ * - Standard container compatibility: Exposes standard STL type aliases and
+ * contiguous iterators.
+ *
+ * @tparam T Element type, constrained by the @c ArrayElement concept (requires
+ * @c DeviceCopyable<T>).
+ */
 template <ArrayElement T> class Array {
 
 protected:
@@ -149,14 +283,14 @@ protected:
   mutable std::atomic<int> active_guards_ = {0};
 
 public:
-  using value_type      = T;
-  using size_type       = std::size_t;
-  using difference_type = std::ptrdiff_t;
-  using reference       = T &;
-  using const_reference = const T &;
-  using pointer         = T *;
-  using const_pointer   = const T *;
-  // iterator on class array
+  using value_type             = T;
+  using size_type              = std::size_t;
+  using difference_type        = std::ptrdiff_t;
+  using reference              = T &;
+  using const_reference        = const T &;
+  using pointer                = T *;
+  using const_pointer          = const T *;
+// STL-Compatible Iterators
   using iterator               = T *;
   using const_iterator         = const T *;
   using reverse_iterator       = std::reverse_iterator<iterator>;
@@ -164,13 +298,6 @@ public:
 
 private:
   template <ArrayElement, MemorySide, AccessMode> friend class AccessGuard;
-
-  // const T *acquireRead(MemorySide side, int count) const;
-  // T *acquireWrite(MemorySide side, int count);
-  // T *acquireRW(MemorySide side, int count);
-
-  // void growTo(int min_capacity);
-  // void shrinkTosize();
 
   void ensureNoActiveGuards(const char *op) const {
     if (active_guards_.load(std::memory_order_relaxed) > 0) [[unlikely]] {
@@ -298,7 +425,7 @@ public:
     memory_.wrap(p, n, MemType::HOST, own);
     size_ = n;
   }
-  // Wraps an existing pointer with specified memory type and ownership
+
   Array(T *p, int n, MemType mt, bool own) {
     memory_.wrap(p, n, mt, own);
     size_ = n;
@@ -337,8 +464,6 @@ public:
     }
   }
 
-  // Copy constructor for Array with different element type, provided that the
-  // conversion is possible.
   template <ArrayElement CT>
     requires(!std::same_as<CT, T> && std::convertible_to<CT, T>)
   explicit Array(const Array<CT> &other)
@@ -361,8 +486,6 @@ public:
   }
 
   ~Array() = default;
-
-  //  operators
 
   Array &operator=(const Array &other) {
     if (this != &other) {
@@ -402,8 +525,6 @@ public:
     return *this;
   }
 
-  // factory reference rebinding methods
-
   [[nodiscard]] static Array<T> aliasOf(const Array &base) {
     Array out;
     out.memory_.makeAlias(base.memory_, 0, base.size_);
@@ -429,8 +550,23 @@ public:
     return out;
   }
 
-  // HPC zero-copy
-
+  /**
+   * @brief Rebinds this Array to reference a sub-range of another Array without
+   * copying.
+   *
+   * Establishes a zero-copy alias of @p base starting at element index @p
+   * offset with length @p n. Both arrays share the underlying MemoryRecord and
+   * its host/device synchronization state.
+   *
+   * @param base Source Array whose memory is to be aliased.
+   * @param offset Zero-based element offset into @p base.
+   * @param n Number of elements in the sub-range view.
+   *
+   * @note Modifying elements through this Array will affect @p base and vice
+   * versa.
+   * @warning Active AccessGuards must not be alive on this instance when
+   * rebinding.
+   */
   void makeRef(const Array &base, int offset, int n) {
     ensureNoActiveGuards("makeRef");
     if (offset < 0 || n < 0 || offset + n > base.size_) [[unlikely]] {
@@ -441,8 +577,26 @@ public:
     size_ = n;
   }
 
+  /**
+   * @brief Rebinds this Array to reference the entire storage of another Array.
+   * Equivalent to `makeRef(base, 0, base.size())`.
+   * @param base Source Array whose memory buffer is to be aliased.
+   */
   void makeRef(const Array &base) { makeRef(base, 0, base.size_); }
 
+  /**
+   * @brief Rebinds this Array to wrap an externally allocated raw memory
+   * buffer.
+   *
+   * Encapsulates external storage (e.g. MPI receive buffers, HYPRE vector
+   * pointers, or stack memory) into VertexFEM's dual-memory management system.
+   *
+   * @param p Pointer to the external memory buffer.
+   * @param n Number of elements in the buffer.
+   * @param mt Memory space where @p p resides (HOST, DEVICE, MANAGED, etc.).
+   * @param own If true, Array takes ownership and frees @p p on destruction;
+   *            if false (default), the buffer is treated as a borrowed view.
+   */
   void makeRef(T *p, int n, MemType mt = MemType::HOST, bool own = false) {
     ensureNoActiveGuards("makeRef(ptr)");
     if (n < 0) [[unlikely]] {
@@ -453,20 +607,30 @@ public:
     size_ = n;
   }
 
-  // size, capacity, empty, byteSize
   int size() const noexcept { return size_; }
+
   int capacity() const noexcept { return memory_.capaCity(); }
+
   bool empty() const noexcept { return size_ == 0; }
 
-  // memory usage in bytes
   std::size_t byteSize() const noexcept {
     return static_cast<std::size_t>(size_) * sizeof(T);
   }
+
   std::size_t byteCapacity() const noexcept {
     return static_cast<std::size_t>(capacity()) * sizeof(T);
   }
+
   std::size_t memoryUsage() const noexcept { return byteCapacity(); }
 
+  /**
+   * @brief Pre-allocates storage capacity to accommodate at least @p n
+   * elements.
+   *
+   * If @p n exceeds capacity(), triggers geometric growth and preserves
+   * existing elements.
+   * @param n Minimum desired capacity in elements.
+   */
   void reserve(int n) {
     ensureNoActiveGuards("reserve");
     if (n > capacity()) [[unlikely]] {
@@ -474,13 +638,22 @@ public:
     }
   }
 
+  /**
+   * @brief Shrinks allocated buffer capacity to match the current size().
+   * Releases excess memory back to the backend memory manager.
+   */
   void shrinkToFit() {
     ensureNoActiveGuards("shrinkToFit");
     shrinkToSize();
   }
 
-  // resize function
-
+  /**
+   * @brief Resizes the array to contain @p n elements.
+   *
+   * If @p n > capacity(), triggers capacity expansion and preserves existing
+   * data. Extended elements are left uninitialized.
+   * @param n Desired new size in elements.
+   */
   void resize(int n) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::resize: negative");
@@ -493,6 +666,12 @@ public:
     size_ = n;
   }
 
+  /**
+   * @brief Resizes the array to contain @p n elements, initializing new
+   * elements with @p v.
+   * @param n Desired new size in elements.
+   * @param v Value to assign to all newly appended elements.
+   */
   void resize(int n, const T &v) {
     const int old = size_;
     resize(n);
@@ -503,6 +682,12 @@ public:
     }
   }
 
+  /**
+   * @brief Reallocates storage of exact size @p n with a specified memory type.
+   * Discards previous contents and allocates a fresh buffer.
+   * @param n Number of elements for the new allocation.
+   * @param mt Backend memory type to allocate.
+   */
   void resize(int n, MemType mt) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::resize: negative");
@@ -516,6 +701,15 @@ public:
     size_   = n;
   }
 
+  /**
+   * @brief Adjusts array size, reallocating storage without preserving existing
+   * data if capacity is exceeded.
+   *
+   * Fast size adjustment. If @p n > capacity(), setSize() allocates a fresh
+   * buffer of exact size @p n without copying old elements, avoiding memory
+   * copy overhead during assembly loops.
+   * @param n Desired element count.
+   */
   void setSize(int n) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::set_size: negative");
@@ -528,6 +722,7 @@ public:
     }
     size_ = n;
   }
+
   void setSize(int n, MemType mt) { resize(n, mt); }
 
   void clear() noexcept {
@@ -535,7 +730,6 @@ public:
     size_ = 0;
   }
 
-  // AccessGuard factory methods
   [[nodiscard]] HostReadGuard<T> hostRead() const {
     return {acquireRead(MemorySide::HOST, size_), size_,
             const_cast<Array *>(this)};
@@ -578,19 +772,33 @@ public:
             static_cast<std::size_t>(size_)};
   }
 
-  // HPC / OPENMP / HYPRE
+  // Architectural Rationale for Raw Pointers:
+  // High-performance computing kernels and third-party scientific libraries
+  // require raw pointers:
+  //  1. MPI Communication: MPI_Send, MPI_Irecv require raw contiguous
+  //  host/device buffers.
+  //  2. OpenMP SIMD Loops: #pragma omp simd requires bare pointers for
+  //  vectorization (AVX-512).
+  //  3. HYPRE / PETSc Solvers: Direct integration with solver array interfaces.
+  //  4. CUDA / HIP Launches: Direct kernel launches <<<grid, block>>> require
+  //  raw device pointers.
+  //
+  // WARNING: Raw pointer accessors DO NOT register with active_guards_. The
+  // caller must ensure the Array is not resized or destroyed while raw pointers
+  // are held.
 
   const T *readPtr(bool on_dev = false) const {
     return acquireRead(on_dev ? MemorySide::DEVICE : MemorySide::HOST, size_);
   }
+
   T *writePtr(bool on_dev = false) {
     return acquireWrite(on_dev ? MemorySide::DEVICE : MemorySide::HOST, size_);
   }
+
   T *rwPtr(bool on_dev = false) {
     return acquireRW(on_dev ? MemorySide::DEVICE : MemorySide::HOST, size_);
   }
 
-  // convenience methods for host/device access
   const T *hostReadPtr() const { return acquireRead(MemorySide::HOST, size_); }
   T *hostWritePtr() { return acquireWrite(MemorySide::HOST, size_); }
   T *hostRWPtr() { return acquireRW(MemorySide::HOST, size_); }
@@ -600,24 +808,60 @@ public:
   T *deviceWritePtr() { return acquireWrite(MemorySide::DEVICE, size_); }
   T *deviceRWPtr() { return acquireRW(MemorySide::DEVICE, size_); }
 
-  // element access and iterator
 
   T &operator[](int i) {
     VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::operator[]: OOB");
     return acquireRW(MemorySide::HOST, size_)[i];
   }
+
   const T &operator[](int i) const {
     VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::operator[]: OOB");
     return acquireRead(MemorySide::HOST, size_)[i];
   }
+
   T &at(int i) {
     VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::at: OOB");
     return acquireRW(MemorySide::HOST, size_)[i];
   }
+
   const T &at(int i) const {
     VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::at: OOB");
     return acquireRead(MemorySide::HOST, size_)[i];
   }
+
+  T &front() { return (*this)[0]; }
+  const T &front() const { return (*this)[0]; }
+  T &back() { return (*this)[size_ - 1]; }
+  const T &back() const { return (*this)[size_ - 1]; }
+  T &last() { return back(); }
+  const T &last() const { return back(); }
+
+  iterator begin() {
+    return size_ > 0 ? acquireRW(MemorySide::HOST, size_) : nullptr;
+  }
+  iterator end() {
+    return size_ > 0 ? acquireRW(MemorySide::HOST, size_) + size_ : nullptr;
+  }
+  const_iterator begin() const {
+    return size_ > 0 ? acquireRead(MemorySide::HOST, size_) : nullptr;
+  }
+  const_iterator end() const {
+    return size_ > 0 ? acquireRead(MemorySide::HOST, size_) + size_ : nullptr;
+  }
+  const_iterator cbegin() const { return begin(); }
+  const_iterator cend() const { return end(); }
+
+  reverse_iterator rbegin() { return reverse_iterator(end()); }
+  reverse_iterator rend() { return reverse_iterator(begin()); }
+  const_reverse_iterator rbegin() const {
+    return const_reverse_iterator(end());
+  }
+  const_reverse_iterator rend() const {
+    return const_reverse_iterator(begin());
+  }
+
+  T *getData() { return begin(); }
+  const T *getData() const { return begin(); }
 };
 
 template <ArrayElement T> class Matrix {
