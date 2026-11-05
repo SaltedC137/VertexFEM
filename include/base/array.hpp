@@ -1,10 +1,12 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <initializer_list>
 #include <type_traits>
+
 #ifndef VFEM_ARRAY_HPP
 #define VFEM_ARRAY_HPP
 
@@ -81,12 +83,39 @@ public:
     other.size_  = 0;
     other.owner_ = nullptr;
   }
-  ~AccessGuard() noexcept;
+
+  AccessGuard &operator=(AccessGuard &&other) noexcept {
+    if (this != &other) {
+      release();
+      ptr_         = other.ptr_;
+      size_        = other.size_;
+      owner_       = other.owner_;
+      other.ptr_   = nullptr;
+      other.size_  = 0;
+      other.owner_ = nullptr;
+    }
+    return *this;
+  }
+
+  ~AccessGuard() noexcept { release(); };
 
 private:
   friend class Array<T>;
-  AccessGuard(pointer p, int n, Array<T> *owner) noexcept;
-  void release() noexcept;
+  AccessGuard(pointer p, int n, Array<T> *owner) noexcept
+      : ptr_(p), size_(n), owner_(owner) {
+    if (owner_) {
+      owner_->active_guards_.fetch_add(1, std::memory_order_relaxed);
+    }
+  }
+
+  void release() noexcept {
+    if (owner_) {
+      owner_->active_guards_.fetch_sub(1, std::memory_order_relaxed);
+      owner_ = nullptr;
+    }
+    ptr_  = nullptr;
+    size_ = 0;
+  }
 
   // pointer to control
   pointer ptr_{nullptr};
@@ -117,7 +146,7 @@ template <ArrayElement T> class Array {
 protected:
   Memory<T> memory_;
   int size_{0};
-  mutable int active_guards_ = {0};
+  mutable std::atomic<int> active_guards_ = {0};
 
 public:
   using value_type      = T;
@@ -144,7 +173,7 @@ private:
   // void shrinkTosize();
 
   void ensureNoActiveGuards(const char *op) const {
-    if (active_guards_ > 0) [[unlikely]] {
+    if (active_guards_.load(std::memory_order_relaxed) > 0) [[unlikely]] {
       vfemError(std::string("Array::") + op +
                 ": cannot modify structure while AccessGuard is alive");
     }
@@ -362,7 +391,7 @@ public:
     requires(!std::same_as<CT, T> && std::convertible_to<CT, T>)
   Array &operator=(const Array<CT> &other) {
     ensureNoActiveGuards("operator=(const Array<CT>&)");
-    set_size(other.size());
+    setSize(other.size());
     if (size_ > 0) {
       auto src = other.hostRead();
       T *dst   = acquireWrite(MemorySide::HOST, size_);
@@ -393,7 +422,7 @@ public:
     return out;
   }
 
-  [[nodiscard]] static Array<T> warp(T *p, int n, MemType mt, bool own) {
+  [[nodiscard]] static Array<T> wrap(T *p, int n, MemType mt, bool own) {
     Array out;
     out.memory_.wrap(p, n, mt, own);
     out.size_ = n;
@@ -426,7 +455,7 @@ public:
 
   // size, capacity, empty, byteSize
   int size() const noexcept { return size_; }
-  int capacity() const noexcept { return memory_.capacity(); }
+  int capacity() const noexcept { return memory_.capaCity(); }
   bool empty() const noexcept { return size_ == 0; }
 
   // memory usage in bytes
@@ -494,7 +523,7 @@ public:
     }
     ensureNoActiveGuards("setSize");
     if (n > capacity()) {
-      Memory<T> new_mem = allocate_like(memory_, n);
+      Memory<T> new_mem = allocateLike(memory_, n);
       memory_           = std::move(new_mem);
     }
     size_ = n;
@@ -531,6 +560,63 @@ public:
 
   [[nodiscard]] DeviceRWGuard<T> deviceRW() {
     return {acquireRW(MemorySide::DEVICE, size_), size_, this};
+  }
+
+  [[nodiscard]] std::span<const T> view() const {
+    if (size_ == 0) {
+      return {};
+    }
+    return {acquireRead(MemorySide::HOST, size_),
+            static_cast<std::size_t>(size_)};
+  }
+
+  [[nodiscard]] std::span<T> mutableView() {
+    if (size_ == 0) {
+      return {};
+    }
+    return {acquireRW(MemorySide::HOST, size_),
+            static_cast<std::size_t>(size_)};
+  }
+
+  // HPC / OPENMP / HYPRE
+
+  const T *readPtr(bool on_dev = false) const {
+    return acquireRead(on_dev ? MemorySide::DEVICE : MemorySide::HOST, size_);
+  }
+  T *writePtr(bool on_dev = false) {
+    return acquireWrite(on_dev ? MemorySide::DEVICE : MemorySide::HOST, size_);
+  }
+  T *rwPtr(bool on_dev = false) {
+    return acquireRW(on_dev ? MemorySide::DEVICE : MemorySide::HOST, size_);
+  }
+
+  // convenience methods for host/device access
+  const T *hostReadPtr() const { return acquireRead(MemorySide::HOST, size_); }
+  T *hostWritePtr() { return acquireWrite(MemorySide::HOST, size_); }
+  T *hostRWPtr() { return acquireRW(MemorySide::HOST, size_); }
+  const T *deviceReadPtr() const {
+    return acquireRead(MemorySide::DEVICE, size_);
+  }
+  T *deviceWritePtr() { return acquireWrite(MemorySide::DEVICE, size_); }
+  T *deviceRWPtr() { return acquireRW(MemorySide::DEVICE, size_); }
+
+  // element access and iterator
+
+  T &operator[](int i) {
+    VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::operator[]: OOB");
+    return acquireRW(MemorySide::HOST, size_)[i];
+  }
+  const T &operator[](int i) const {
+    VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::operator[]: OOB");
+    return acquireRead(MemorySide::HOST, size_)[i];
+  }
+  T &at(int i) {
+    VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::at: OOB");
+    return acquireRW(MemorySide::HOST, size_)[i];
+  }
+  const T &at(int i) const {
+    VFEM_HOT_ASSERT(i >= 0 && i < size_, "Array::at: OOB");
+    return acquireRead(MemorySide::HOST, size_)[i];
   }
 };
 
