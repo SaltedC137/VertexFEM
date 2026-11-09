@@ -520,11 +520,17 @@ public:
   Array(T *p, int n, bool own) : Array(p, n, MemType::HOST, own) {}
 
   Array(T *p, int n, MemType mt, bool own) {
-    memory_.wrap(p, n == 0 && p != nullptr && own ? 1 : n, mt, own);
-    if (n == 0) {
-      memory_.reset();
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::Array(ptr): negative size");
+      return;
     }
-    size_ = memory_.capaCity();
+    if (n == 0 && p != nullptr && own) {
+      memory_.wrap(p, 1, mt, own);
+      size_ = 0;
+    } else {
+      memory_.wrap(p, n, mt, own);
+      size_ = memory_.capaCity();
+    }
   }
 
   Array(std::initializer_list<T> init) {
@@ -1120,6 +1126,15 @@ public:
 
   T *getData() { return begin(); }
   const T *getData() const { return begin(); }
+
+  // copy all memory blocks
+  void fill(const T &v) {
+    if (size_ == 0) {
+      return;
+    }
+    T *buffer = acquireRW(MemorySide::HOST, size_);
+    std::fill(buffer, buffer + size_, v);
+  }
 };
 
 template <ArrayElement T> class Matrix {
