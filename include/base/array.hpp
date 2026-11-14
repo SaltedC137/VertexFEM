@@ -1135,6 +1135,139 @@ public:
     T *buffer = acquireRW(MemorySide::HOST, size_);
     std::fill(buffer, buffer + size_, v);
   }
+
+  Array &operator=(const T &v) {
+    fill(v);
+    return *this;
+  }
+
+  void assign(const T *src, int n) {
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::assign: negative size");
+      return;
+    }
+    if (!ensureNoActiveGuards("assign")) {
+      return;
+    }
+    if (n == 0) {
+      setSize(0);
+      return;
+    }
+    if (src == nullptr) {
+      vfemError("Array::assign: null source pointer with positive size");
+      return;
+    }
+    const T *current       = memory_.hostIsValid()
+                                 ? memory_.read(MemoryClass::HOST, capacity())
+                                 : nullptr;
+    const auto src_addr    = reinterpret_cast<std::uintptr_t>(src);
+    const auto cur_addr    = reinterpret_cast<std::uintptr_t>(current);
+    const bool is_internal = (current != nullptr && src_addr >= cur_addr &&
+                              src_addr < cur_addr + byteCapacity());
+
+    if (is_internal && n > capacity()) {
+      const std::size_t max_avail =
+          (cur_addr + byteCapacity() - src_addr) / sizeof(T);
+      const std::size_t copy_count =
+          std::min(static_cast<std::size_t>(n), max_avail);
+      Memory<T> new_mem = allocateLike(memory_, n);
+      T *dst            = new_mem.write(MemoryClass::HOST, n);
+      if (dst != nullptr) {
+        std::memmove(dst, src, copy_count * sizeof(T));
+      }
+      memory_ = std::move(new_mem);
+      active_guards_.reset();
+      size_ = n;
+      return;
+    }
+    setSize(n);
+    if (size_ == n && n > 0) {
+      T *p = acquireWrite(MemorySide::HOST, size_);
+      if (p != nullptr) [[likely]] {
+        std::memmove(p, src, static_cast<std::size_t>(n) * sizeof(T));
+      }
+    }
+  }
+
+  void assign(const T *src) { assign(src, size_); }
+
+  template <std::ranges::sized_range R>
+    requires std::convertible_to<std::ranges::range_value_t<R>, T>
+  void assign(R &&range) {
+    if (!ensureNoActiveGuards("assign(range)")) {
+      return;
+    }
+    const auto count = std::ranges::size(range);
+    if (std::cmp_greater(count, std::numeric_limits<int>::max())) [[unlikely]] {
+      vfemError("Array::assign(range): size exceeds maximum int");
+      return;
+    }
+    const int n = static_cast<int>(count);
+    if (n == 0) {
+      setSize(0);
+      return;
+    }
+    setSize(n);
+    if (size_ == n && n > 0) {
+      T *p = acquireWrite(MemorySide::HOST, size_);
+      if (p != nullptr) [[likely]] {
+        if constexpr (std::ranges::contiguous_range<R> &&
+                      std::is_trivially_copyable_v<T>) {
+          std::memmove(p, std::ranges::data(range),
+                       static_cast<std::size_t>(n) * sizeof(T));
+        } else {
+          std::ranges::copy(range, p);
+        }
+      }
+    }
+  }
+
+  void copyFromHost(const T *src, int n) {
+    if (n < 0 || n > size_) [[unlikely]] {
+      vfemError("Array::copyFromHost: bad n");
+      return;
+    }
+    if (n > 0 && src != nullptr) {
+      T *p = (n == size_) ? acquireWrite(MemorySide::HOST, size_)
+                          : acquireRW(MemorySide::HOST, size_);
+      if (p != nullptr) [[likely]] {
+        std::memmove(p, src, static_cast<std::size_t>(n) * sizeof(T));
+      }
+    }
+  }
+
+  void copyToHost(T *dst, int n) const {
+    if (n < 0 || n > size_) [[unlikely]] {
+      vfemError("Array::copyToHost: bad n");
+      return;
+    }
+    if (n > 0 && dst != nullptr) {
+      const T *p = acquireRead(MemorySide::HOST, n);
+      if (p != nullptr) [[likely]] {
+        std::memmove(dst, p, static_cast<std::size_t>(n) * sizeof(T));
+      }
+    }
+  }
+
+  void copyFrom(const T *src) { copyFromHost(src, size_); }
+  void copyTo(T *dst) const { copyToHost(dst, size_); }
+
+  void copy(Array &out) const { out.assign(view()); }
+
+  void getSubArray(int offset, int n, Array<T> &out) const {
+    if (offset < 0 || n < 0 || offset + n > size_) [[unlikely]] {
+      vfemError("Array::getSubArray: range out of bounds");
+      return;
+    }
+    out.setSize(n);
+    if (n > 0) {
+      const T *src = acquireRead(MemorySide::HOST, size_);
+      T *dst       = out.acquireWrite(MemorySide::HOST, n);
+      if (src != nullptr && dst != nullptr) [[likely]] {
+        std::memmove(dst, src + offset, static_cast<std::size_t>(n) * sizeof(T));
+      }
+    }
+  }
 };
 
 template <ArrayElement T> class Matrix {
