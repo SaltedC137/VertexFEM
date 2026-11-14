@@ -163,23 +163,12 @@ private:
   friend class Array<T>;
 
   AccessGuard(int n, Array<T> *owner) : size_(n) {
-    if (owner == nullptr) {
+    if (owner == nullptr || n < 0) {
       size_ = 0;
       return;
     }
     if (!owner->active_guards_) {
       owner->active_guards_ = std::make_shared<std::atomic<int>>(0);
-    }
-    if constexpr (IsReadOnly) {
-      ptr_ = owner->acquireRead(S, n);
-    } else if constexpr (M == AccessMode::WRITE_ONLY) {
-      ptr_ = owner->acquireWrite(S, n);
-    } else {
-      ptr_ = owner->acquireRW(S, n);
-    }
-    if (n > 0 && ptr_ == nullptr) {
-      size_ = 0;
-      return;
     }
     auto counter = owner->active_guards_;
     int expected = counter->load(std::memory_order_relaxed);
@@ -208,6 +197,18 @@ private:
     }
     owner_  = std::move(counter);
     memory_ = owner->memory_;
+
+    if constexpr (IsReadOnly) {
+      ptr_ = owner->acquireRead(S, n, false);
+    } else if constexpr (M == AccessMode::WRITE_ONLY) {
+      ptr_ = owner->acquireWrite(S, n, false);
+    } else {
+      ptr_ = owner->acquireRW(S, n, false);
+    }
+
+    if (n > 0 && ptr_ == nullptr) {
+      release();
+    }
   }
 
   void release() noexcept {
@@ -405,9 +406,10 @@ private:
     }
   }
 
-  const T *acquireRead(MemorySide side, int count) const {
-    if (active_guards_ && active_guards_->load(std::memory_order_acquire) < 0)
-        [[unlikely]] {
+  const T *acquireRead(MemorySide side, int count,
+                       bool check_guards = true) const {
+    if (check_guards && active_guards_ &&
+        active_guards_->load(std::memory_order_acquire) < 0) [[unlikely]] {
       vfemError("Array::acquireRead: active writer");
       return nullptr;
     }
@@ -421,8 +423,8 @@ private:
     return memory_.read(toMc(side), count);
   }
 
-  T *acquireWrite(MemorySide side, int count) {
-    if (!ensureNoActiveGuards("acquireWrite")) {
+  T *acquireWrite(MemorySide side, int count, bool check_guards = true) {
+    if (check_guards && !ensureNoActiveGuards("acquireWrite")) {
       return nullptr;
     }
     if (count < 0 || count > size_) [[unlikely]] {
@@ -438,8 +440,8 @@ private:
     return memory_.write(toMc(side), count);
   }
 
-  T *acquireRW(MemorySide side, int count) {
-    if (!ensureNoActiveGuards("acquireRW")) {
+  T *acquireRW(MemorySide side, int count, bool check_guards = true) {
+    if (check_guards && !ensureNoActiveGuards("acquireRW")) {
       return nullptr;
     }
     if (count < 0 || count > size_) [[unlikely]] {
@@ -1264,7 +1266,8 @@ public:
       const T *src = acquireRead(MemorySide::HOST, size_);
       T *dst       = out.acquireWrite(MemorySide::HOST, n);
       if (src != nullptr && dst != nullptr) [[likely]] {
-        std::memmove(dst, src + offset, static_cast<std::size_t>(n) * sizeof(T));
+        std::memmove(dst, src + offset,
+                     static_cast<std::size_t>(n) * sizeof(T));
       }
     }
   }

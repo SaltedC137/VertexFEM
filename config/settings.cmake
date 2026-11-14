@@ -1,18 +1,23 @@
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
-endif()
+# VertexFEM Build Configuration Options
+#
+# This file defines build-time options and feature flags for VertexFEM, including:
+#   - Numerical precision and global index width
+#   - Parallel backends and accelerators (OpenMP, CUDA, HIP, MPI)
+#   - Vectorization intrinsics (SIMD) and third-party solver libraries (HYPRE)
+#   - Thread safety diagnostics, sanitizers, and unit testing toggles
 
-option(VFEM_USE_DOUBLE "Use double precision" ON)
-option(VFEM_SAFE_THREADS "Enable safe threads" OFF)
+option(VFEM_USE_DOUBLE       "Use double precision (FP64) instead of single (FP32)" ON)
+option(VFEM_USE_64BIT_INDEX  "Enable 64-bit global index integers for exascale grids" OFF)
 
-# VertexFEM options
-option(VFEM_USE_OPENMP "Enable OPENMP" ON)
-option(VFEM_USE_CUDA "Enable CUDA" ON)
-option(VFEM_USE_HIP "Enable HIP" OFF)
-option(VFEM_USE_MPI "Enable MPI" ON)
-option(VFEM_USE_HYPRE "Enable HYPRE" ON)
-option(MFEM_USE_SIMD "Enable use of SIMD intrinsics" ON)
 
-# Debugging options
-option(ENABLE_ASAN "Enable AddressSanitizer" OFF)
-option(BUILD_TESTING "Build the testing tree" ON)
+option(VFEM_USE_OPENMP       "Enable OpenMP multi-threading and SIMD" ON)
+option(VFEM_USE_CUDA         "Enable NVIDIA CUDA accelerator backend" ON)
+option(VFEM_USE_HIP          "Enable AMD ROCm/HIP accelerator backend" OFF)
+option(VFEM_USE_MPI          "Enable MPI distributed computing backend" ON)
+option(VFEM_USE_HYPRE        "Enable HYPRE linear solver integration" ON)
+option(VFEM_USE_SIMD         "Enable AVX2/AVX-512 SIMD vectorization intrinsics" ON)
+
+
+option(VFEM_SAFE_THREADS     "Enable thread-safety verification checks" OFF)
+option(ENABLE_ASAN           "Enable AddressSanitizer and LeakSanitizer" OFF)
+option(BUILD_TESTING         "Build VertexFEM unit tests and benchmark suite" ON)
