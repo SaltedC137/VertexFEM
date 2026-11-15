@@ -13,6 +13,7 @@
 #include <ranges>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #ifndef VFEM_ARRAY_HPP
 #define VFEM_ARRAY_HPP
@@ -1270,6 +1271,89 @@ public:
                      static_cast<std::size_t>(n) * sizeof(T));
       }
     }
+  }
+
+  // Dynamic insertion/deletion, query specification, in-place algorithms,
+  // ownership control, and state pass-through.
+
+  int append(const T &v) {
+    if (!ensureNoActiveGuards("append")) {
+      return size_;
+    }
+    if (size_ == std::numeric_limits<int>::max()) [[unlikely]] {
+      vfemError("Array::append: size overflow");
+      return size_;
+    }
+    const int old = size_;
+    const T val   = v;
+    resize(old + 1);
+    if (size_ != old + 1) {
+      return size_;
+    }
+    T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
+                      : acquireRW(MemorySide::HOST, size_);
+    if (p != nullptr) [[likely]] {
+      p[old] = val;
+    }
+    return size_;
+  }
+
+  void pushBack(const T &v) { append(v); }
+
+  
+
+  int append(const T *src, int n) {
+    if (n < 0) [[unlikely]] {
+      vfemError("Array::append: negative size");
+      return size_;
+    }
+    if (n == 0) {
+      return size_;
+    }
+    if (src == nullptr) [[unlikely]] {
+      vfemError("Array::append: null source pointer");
+      return size_;
+    }
+    if (!ensureNoActiveGuards("append(ptr)")) {
+      return size_;
+    }
+    const int old = size_;
+    if (old > std::numeric_limits<int>::max() - n) [[unlikely]] {
+      vfemError("Array::append: size overflow");
+      return size_;
+    }
+    const T *current       = memory_.hostIsValid()
+                                 ? memory_.read(MemoryClass::HOST, capacity())
+                                 : nullptr;
+    const auto src_addr    = reinterpret_cast<std::uintptr_t>(src);
+    const auto cur_addr    = reinterpret_cast<std::uintptr_t>(current);
+    const bool is_internal = (current != nullptr && src_addr >= cur_addr &&
+                              src_addr < cur_addr + byteCapacity());
+    if (is_internal && old + n > capacity()) {
+      const std::size_t max_avail =
+          (cur_addr + byteCapacity() - src_addr) / sizeof(T);
+      const std::size_t copy_count =
+          std::min(static_cast<std::size_t>(n), max_avail);
+      std::vector<T> staging(src, src + copy_count);
+      resize(old + n);
+      if (size_ == old + n) {
+        T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
+                          : acquireRW(MemorySide::HOST, size_);
+        if (p != nullptr) [[likely]] {
+          std::memcpy(p + old, staging.data(), copy_count * sizeof(T));
+        }
+      }
+      return size_;
+    }
+    resize(old + n);
+    if (size_ == old + n) {
+      T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
+                        : acquireRW(MemorySide::HOST, size_);
+      if (p != nullptr) [[likely]] {
+        std::memmove(p + old, src, static_cast<std::size_t>(n) * sizeof(T));
+      }
+    }
+    return size_;
   }
 };
 
