@@ -1370,6 +1370,10 @@ public:
     }
     return append(src, other.size());
   }
+
+  template <std::ranges::sized_range R>
+    requires std::convertible_to<std::ranges::range_value_t<R>, T>
+  int appendrange(R &&range) {}
 };
 
 template <ArrayElement T> class Matrix {
