@@ -1300,8 +1300,8 @@ public:
 
   void pushBack(const T &v) { append(v); }
 
-  
-
+  // Contiguous range insertion, self-aliasing staging resolution,
+  // geometric buffer reallocation, and memory state synchronization.
   int append(const T *src, int n) {
     if (n < 0) [[unlikely]] {
       vfemError("Array::append: negative size");
@@ -1354,6 +1354,21 @@ public:
       }
     }
     return size_;
+  }
+
+  int append(const Array &other) {
+    if (other.empty()) {
+      return size_;
+    }
+    if (this == &other) [[unlikely]] {
+      Array tmp(other);
+      return append(tmp.hostReadPtr(), tmp.size());
+    }
+    const T *src = other.acquireRead(MemorySide::HOST, other.size());
+    if (src == nullptr) {
+      return size_;
+    }
+    return append(src, other.size());
   }
 };
 
