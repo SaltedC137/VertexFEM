@@ -530,8 +530,6 @@ template <DeviceCopyable T> void Memory<T>::moveFrom(Memory &&other) noexcept {
   other.flags        = 0;
 }
 
-//============================================================================
-
 template <DeviceCopyable T>
 Memory<T>::Memory(const Memory &other) noexcept
     : h_ptr(other.h_ptr), d_ptr(other.d_ptr), capacity(other.capacity),

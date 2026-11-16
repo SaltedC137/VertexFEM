@@ -2,6 +2,7 @@
 #include "base/mem_manager.hpp"
 #include "utils/check.hpp"
 
+#include <deque>
 #include <vector>
 
 using namespace vfem;
@@ -79,9 +80,9 @@ void testResizeAndGrow() {
   Array<double> a(3);
   {
     auto w = a.hostWrite();
-    w[0] = 10.0;
-    w[1] = 20.0;
-    w[2] = 30.0;
+    w[0]   = 10.0;
+    w[1]   = 20.0;
+    w[2]   = 30.0;
   }
 
   a.resize(7);
@@ -123,7 +124,7 @@ void testAliasingAndSharedLocks() {
 
   {
     auto w = slice.hostRW();
-    w[0] = 888.0;
+    w[0]   = 888.0;
   }
   {
     auto r = base.hostRead();
@@ -156,6 +157,63 @@ void testIteratorsAndStlCompatibility() {
   CHECK_EQ(sum, 42 * 4);
 }
 
+void testAppendRange() {
+  Array<int> arr;
+  std::vector<int> empty_vec;
+  CHECK_EQ(arr.appendrange(empty_vec), 0);
+  CHECK(arr.empty());
+
+  std::vector<int> contiguous_data{1, 2, 3};
+  CHECK_EQ(arr.appendrange(contiguous_data), 3);
+  CHECK_EQ(arr.size(), 3);
+  {
+    auto r = arr.hostRead();
+    CHECK_EQ(r[0], 1);
+    CHECK_EQ(r[1], 2);
+    CHECK_EQ(r[2], 3);
+  }
+
+  std::deque<int> deque_data{4, 5};
+  CHECK_EQ(arr.appendRange(deque_data), 5);
+  CHECK_EQ(arr.size(), 5);
+  {
+    auto r = arr.hostRead();
+    CHECK_EQ(r[3], 4);
+    CHECK_EQ(r[4], 5);
+  }
+
+  Array<double> d_arr{10.5};
+  std::vector<int> int_data{20, 30};
+  d_arr.appendrange(int_data);
+  CHECK_EQ(d_arr.size(), 3);
+  {
+    auto r = d_arr.hostRead();
+    CHECK_EQ(r[0], 10.5);
+    CHECK_EQ(r[1], 20.0);
+    CHECK_EQ(r[2], 30.0);
+  }
+
+  {
+    auto r = arr.hostRead();
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    CHECK_EQ(arr.appendrange(contiguous_data), 5);
+  }
+
+  // popBack testing
+  Array<int> pop_arr{1, 2, 3};
+  pop_arr.popBack();
+  CHECK_EQ(pop_arr.size(), 2);
+  CHECK_EQ(pop_arr.back(), 2);
+  pop_arr.popBack();
+  pop_arr.popBack();
+  CHECK(pop_arr.empty());
+  {
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    pop_arr.popBack();
+    CHECK(pop_arr.empty());
+  }
+}
+
 } // namespace
 
 int main() {
@@ -165,5 +223,6 @@ int main() {
   testAliasingAndSharedLocks();
   testPointerWrap();
   testIteratorsAndStlCompatibility();
+  testAppendRange();
   return 0;
 }

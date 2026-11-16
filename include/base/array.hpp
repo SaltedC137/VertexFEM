@@ -1373,7 +1373,53 @@ public:
 
   template <std::ranges::sized_range R>
     requires std::convertible_to<std::ranges::range_value_t<R>, T>
-  int appendrange(R &&range) {}
+  int appendrange(R &&range) {
+    const auto count = std::ranges::size(range);
+    if (count == 0) {
+      return size_;
+    }
+    if (std::cmp_greater(count, std::numeric_limits<int>::max() - size_))
+        [[unlikely]] {
+      vfemError("Array::appendRange: size overflow");
+      return size_;
+    }
+    const int n = static_cast<int>(count);
+    if constexpr (std::ranges::contiguous_range<R> &&
+                  std::same_as<std::remove_cv_t<std::ranges::range_value_t<R>>,
+                               T>) {
+      return append(std::ranges::data(range), n);
+    } else {
+      if (!ensureNoActiveGuards("appendRange")) {
+        return size_;
+      }
+      const int old = size_;
+      resize(old + n);
+      if (size_ == old + n) {
+        T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
+                          : acquireRW(MemorySide::HOST, size_);
+        if (p != nullptr) [[likely]] {
+          std::ranges::copy(range, p + old);
+        }
+      }
+      return size_;
+    }
+  }
+
+  template <std::ranges::sized_range R>
+    requires std::convertible_to<std::ranges::range_value_t<R>, T>
+  int appendRange(R &&range) {
+    return appendrange(std::forward<R>(range));
+  }
+  void popBack() {
+    if (!ensureNoActiveGuards("popBack")) {
+      return;
+    }
+    if (empty()) [[unlikely]] {
+      vfemError("Array::popBack: empty array");
+      return;
+    }
+    --size_;
+  }
 };
 
 template <ArrayElement T> class Matrix {
