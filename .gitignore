@@ -58,6 +58,9 @@ TAGS
 *.a
 /bin/
 
+# docs
+*.pdf
+
 # bash scripts 
 clear.sh
 format_check.sh

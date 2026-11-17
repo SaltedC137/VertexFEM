@@ -1136,6 +1136,9 @@ public:
       return;
     }
     T *buffer = acquireRW(MemorySide::HOST, size_);
+    if (buffer == nullptr) [[unlikely]] {
+      return;
+    }
     std::fill(buffer, buffer + size_, v);
   }
 
@@ -1445,6 +1448,9 @@ public:
     }
     return new_size - 1;
   }
+
+  [[nodiscard]] int unionWith(const T &v) { return insertUnique(v); }
+  
 };
 
 template <ArrayElement T> class Matrix {
