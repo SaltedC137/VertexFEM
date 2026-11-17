@@ -1397,28 +1397,20 @@ public:
       if (size_ == old + n) {
         T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
                           : acquireRW(MemorySide::HOST, size_);
-        if (p != nullptr) [[likely]] {
+        if (p != nullptr) [[unlikely]] {
           std::ranges::copy(range, p + old);
         }
       }
       return size_;
     }
   }
-
-  template <std::ranges::sized_range R>
-    requires std::convertible_to<std::ranges::range_value_t<R>, T>
-  int appendRange(R &&range) {
-    return appendrange(std::forward<R>(range));
-  }
   void popBack() {
     if (!ensureNoActiveGuards("popBack")) {
       return;
     }
-    if (empty()) [[unlikely]] {
-      vfemError("Array::popBack: empty array");
-      return;
+    if (size_ > 0) {
+      --size_;
     }
-    --size_;
   }
 };
 
