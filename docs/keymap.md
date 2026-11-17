@@ -10,23 +10,23 @@
 
 The full-text PDF documents are archived locally under the `docs/arxiv/` directory as foundational references for VertexFEM system engineering:
 
-| arXiv Identifier | Title | Authors / Primary Organization | Local Archive Path | Official Web Citation |
-| :--- | :--- | :--- | :--- | :--- |
-| **[2601.08374](https://arxiv.org/abs/2601.08374)** | *Shifting the Sweet Spot: High-Performance Matrix-Free Method for High-Order Elasticity* (Jan 2026) | MFEM Team / Lawrence Livermore National Laboratory | [PDF](file:///home/sallyface/project/c/VertexFEM/docs/arxiv/2601.08374_mfem_matrix_free_elasticity.pdf) | [arXiv:2601.08374](https://arxiv.org/abs/2601.08374) |
-| **[2109.04996](https://arxiv.org/abs/2109.04996)** | *Efficient Exascale Discretizations: High-Order Finite Element Methods* (2021) | CEED Co-Design Team (Kolev, Fischer, Dongarra, Brown, et al.) | [PDF](file:///home/sallyface/project/c/VertexFEM/docs/arxiv/2109.04996_efficient_exascale_discretizations.pdf) | [arXiv:2109.04996](https://arxiv.org/abs/2109.04996) |
-| **[1711.03590](https://arxiv.org/abs/1711.03590)** | *Fast matrix-free evaluation of discontinuous Galerkin finite element operators* (2019) | Martin Kronbichler & Katharina Kormann (deal.II / TUM) | [PDF](file:///home/sallyface/project/c/VertexFEM/docs/arxiv/1711.03590_matrix_free_dg_operators.pdf) | [arXiv:1711.03590](https://arxiv.org/abs/1711.03590) |
-| **[1911.09220](https://arxiv.org/abs/1911.09220)** | *MFEM: A modular finite element methods library* (2020) | Robert Anderson, Veselin Dobrev, Tzanio Kolev, et al. (LLNL) | [PDF](file:///home/sallyface/project/c/VertexFEM/docs/arxiv/1911.09220_mfem_modular_fem_library.pdf) | [arXiv:1911.09220](https://arxiv.org/abs/1911.09220) |
+| arXiv Identifier | Title | Authors / Primary Organization | Official Web Citation |
+| :--- | :--- | :--- | :--- |
+| **[2601.08374](https://arxiv.org/abs/2601.08374)** | *Shifting the Sweet Spot: High-Performance Matrix-Free Method for High-Order Elasticity* (Jan 2026) | MFEM Team / Lawrence Livermore National Laboratory | [arXiv:2601.08374](https://arxiv.org/abs/2601.08374) |
+| **[2109.04996](https://arxiv.org/abs/2109.04996)** | *Efficient Exascale Discretizations: High-Order Finite Element Methods* (2021) | CEED Co-Design Team (Kolev, Fischer, Dongarra, Brown, et al.) | [arXiv:2109.04996](https://arxiv.org/abs/2109.04996) |
+| **[1711.03590](https://arxiv.org/abs/1711.03590)** | *Fast matrix-free evaluation of discontinuous Galerkin finite element operators* (2019) | Martin Kronbichler & Katharina Kormann (deal.II / TUM) | [arXiv:1711.03590](https://arxiv.org/abs/1711.03590) |
+| **[1911.09220](https://arxiv.org/abs/1911.09220)** | *MFEM: A modular finite element methods library* (2020) | Robert Anderson, Veselin Dobrev, Tzanio Kolev, et al. (LLNL) | [arXiv:1911.09220](https://arxiv.org/abs/1911.09220) |
 
 ---
 
 ## 2. Core Theoretical Foundations & HPC Architectural Synthesis
 
 ```
-       ┌─────────────────────────────────────────────────────────────┐
-       │             Exascale Bottleneck: FLOPs are Cheap, Data is Costly            │
+       ┌─────────────────────────────────────────────────────────────────────┐
+       │             Exascale Bottleneck: FLOPs are Cheap, Data is Costly    │
        │   Full Assembly (FA):    ~15 Bytes/FLOP (Memory-bandwidth starved)  │
        │   Partial Assembly (PA): ~1 Byte/FLOP   (Saturating compute cores)  │
-       └──────────────────────────────┬──────────────────────────────┘
+       └──────────────────────────────┬──────────────────────────────────────┘
                                       │
            ┌──────────────────────────┴──────────────────────────┐
            ▼                                                     ▼
