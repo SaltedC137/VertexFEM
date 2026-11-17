@@ -199,14 +199,22 @@ private:
     owner_  = std::move(counter);
     memory_ = owner->memory_;
 
-    if constexpr (IsReadOnly) {
-      ptr_ = owner->acquireRead(S, n, false);
-    } else if constexpr (M == AccessMode::WRITE_ONLY) {
-      ptr_ = owner->acquireWrite(S, n, false);
-    } else {
-      ptr_ = owner->acquireRW(S, n, false);
+#if defined(__cpp_exceptions)
+    try {
+#endif
+      if constexpr (IsReadOnly) {
+        ptr_ = owner->acquireRead(S, n, false);
+      } else if constexpr (M == AccessMode::WRITE_ONLY) {
+        ptr_ = owner->acquireWrite(S, n, false);
+      } else {
+        ptr_ = owner->acquireRW(S, n, false);
+      }
+#if defined(__cpp_exceptions)
+    } catch (...) {
+      release();
+      throw;
     }
-
+#endif
     if (n > 0 && ptr_ == nullptr) {
       release();
     }
@@ -1450,7 +1458,59 @@ public:
   }
 
   [[nodiscard]] int unionWith(const T &v) { return insertUnique(v); }
-  
+
+  void eraseFirst(const T &v) {
+    if (size_ == 0) {
+      return;
+    }
+    if (!ensureNoActiveGuards("eraseFirst")) {
+      return;
+    }
+    const T val = v;
+    T *p        = acquireRW(MemorySide::HOST, size_);
+    if (p == nullptr) {
+      return;
+    }
+    for (int it = 0; it < size_; ++it) {
+      if (p[it] == val) {
+        std::memmove(p + it, p + it + 1,
+                     static_cast<std::size_t>(size_ - it - 1) * sizeof(T));
+        --size_;
+        return;
+      }
+    }
+  }
+
+  void eraseAt(const std::vector<int> &indices) {
+    if (indices.empty() || size_ == 0) {
+      return;
+    }
+    if (!ensureNoActiveGuards("eraseAt")) {
+      return;
+    }
+    std::vector<int> sorted(indices);
+    std::ranges::sort(sorted);
+    auto [first_dup, last_dup] = std::ranges::unique(sorted);
+    sorted.erase(first_dup, last_dup);
+    if (sorted.front() < 0 || sorted.back() >= size_) [[unlikely]] {
+      vfemError("Array::eraseAt: index out of bounds");
+      return;
+    }
+    T *p = acquireRW(MemorySide::HOST, size_);
+    if (p == nullptr) {
+      return;
+    }
+    const int count = static_cast<int>(sorted.size());
+    int rm          = 1;
+    for (int i = sorted[0] + 1; i < size_; ++i) {
+      if (rm < count && i == sorted[rm]) {
+        ++rm;
+      } else {
+        p[i - rm] = p[i];
+      }
+    }
+    size_ -= rm;
+  }
 };
 
 template <ArrayElement T> class Matrix {
