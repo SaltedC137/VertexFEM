@@ -434,6 +434,8 @@ public:
 
   void registerBackend(MemType type, Backend backend);
   void registerCopy(MemType dst, MemType src, CopyFunc copy);
+  bool copy(void *dst, MemType dst_mt, const void *src, MemType src_mt,
+            std::size_t bytes);
 
   [[nodiscard]] bool supports(MemType type) const noexcept;
 
@@ -450,8 +452,6 @@ private:
   void allocate(MemoryRecord &record, MemorySide side);
   void *access(MemoryRecord &record, MemorySide side, AccessMode mode);
   void deleteDevice(MemoryRecord &record, bool copy_to_host);
-  bool copy(void *dst, MemType dst_mt, const void *src, MemType src_mt,
-            std::size_t bytes);
 
   [[nodiscard]] static bool isConcreteType(MemType type) noexcept;
   [[nodiscard]] static std::size_t typeIndex(MemType type);

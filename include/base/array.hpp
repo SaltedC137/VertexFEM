@@ -1266,7 +1266,33 @@ public:
   void copyFrom(const T *src) { copyFromHost(src, size_); }
   void copyTo(T *dst) const { copyToHost(dst, size_); }
 
-  void copy(Array &out) const { out.assign(view()); }
+  void copy(Array &out) const {
+    if (this == &out) [[unlikely]] {
+      return;
+    }
+    if (size_ == 0) {
+      out.setSize(0);
+      return;
+    }
+    if (memory_.deviceIsValid() && memory_.useDevice()) {
+      out.setSize(size_, memory_.getDeviceMemType());
+      const T *d_src = acquireRead(MemorySide::DEVICE, size_);
+      T *d_dst       = out.acquireWrite(MemorySide::DEVICE, size_);
+      if (d_src != nullptr && d_dst != nullptr) [[likely]] {
+        if (!MemoryManager::get().copy(d_dst, memory_.getDeviceMemType(), d_src,
+                                       memory_.getDeviceMemType(), byteSize())) {
+          vfemError("Array::copy: device-to-device copy failed");
+        }
+        return;
+      }
+    }
+    const T *src = acquireRead(MemorySide::HOST, size_);
+    if (src != nullptr) [[likely]] {
+      out.assign(src, size_);
+    } else {
+      vfemError("Array::copy: source read acquisition failed");
+    }
+  }
 
   void getSubArray(int offset, int n, Array<T> &out) const {
     if (offset < 0 || n < 0 || offset + n > size_) [[unlikely]] {
@@ -1445,10 +1471,16 @@ public:
   }
 
   [[nodiscard]] int insertUnique(const T &v) {
-    const int i = find(v);
-    if (i >= 0) {
-      return i;
+    const auto s = view();
+    if (size_ > 0 && s.empty()) {
+      return -1;
     }
+    for (int it = 0; it < static_cast<int>(s.size()); ++it) {
+      if (s[static_cast<std::size_t>(it)] == v) {
+        return it;
+      }
+    }
+
     const int old_size = size_;
     const int new_size = append(v);
     if (new_size == old_size) [[unlikely]] {

@@ -254,6 +254,56 @@ void testFindAndInsertUnique() {
   }
 }
 
+void testCopy() {
+  Array<int> a(5);
+  for (int i = 0; i < 5; ++i) {
+    a[i] = (i + 1) * 10;
+  }
+
+  // Copy to uninitialized / empty array
+  Array<int> b;
+  a.copy(b);
+  CHECK_EQ(b.size(), 5);
+  for (int i = 0; i < 5; ++i) {
+    CHECK_EQ(b[i], (i + 1) * 10);
+  }
+
+  // Self copy
+  b.copy(b);
+  CHECK_EQ(b.size(), 5);
+  for (int i = 0; i < 5; ++i) {
+    CHECK_EQ(b[i], (i + 1) * 10);
+  }
+
+  // Empty copy
+  Array<int> empty;
+  Array<int> c;
+  empty.copy(c);
+  CHECK_EQ(c.size(), 0);
+
+  // copyFrom / copyTo
+  std::vector<int> src = {1, 2, 3};
+  Array<int> d(3);
+  d.copyFrom(src.data());
+  CHECK_EQ(d[0], 1);
+  CHECK_EQ(d[1], 2);
+  CHECK_EQ(d[2], 3);
+
+  std::vector<int> dst(3, 0);
+  d.copyTo(dst.data());
+  CHECK_EQ(dst[0], 1);
+  CHECK_EQ(dst[1], 2);
+  CHECK_EQ(dst[2], 3);
+
+  // getSubArray
+  Array<int> sub;
+  a.getSubArray(1, 3, sub);
+  CHECK_EQ(sub.size(), 3);
+  CHECK_EQ(sub[0], 20);
+  CHECK_EQ(sub[1], 30);
+  CHECK_EQ(sub[2], 40);
+}
+
 } // namespace
 
 int main() {
@@ -265,5 +315,6 @@ int main() {
   testIteratorsAndStlCompatibility();
   testAppendRange();
   testFindAndInsertUnique();
+  testCopy();
   return 0;
 }
