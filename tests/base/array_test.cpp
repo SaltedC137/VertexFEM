@@ -174,7 +174,7 @@ void testAppendRange() {
   }
 
   std::deque<int> deque_data{4, 5};
-  CHECK_EQ(arr.appendRange(deque_data), 5);
+  CHECK_EQ(arr.appendrange(deque_data), 5);
   CHECK_EQ(arr.size(), 5);
   {
     auto r = arr.hostRead();
@@ -214,6 +214,46 @@ void testAppendRange() {
   }
 }
 
+void testFindAndInsertUnique() {
+  Array<int> empty;
+  CHECK_EQ(empty.find(42), -1);
+  CHECK_EQ(empty.findSorted(42), -1);
+
+  Array<int> arr{10, 20, 30, 20, 50};
+  CHECK_EQ(arr.find(10), 0);
+  CHECK_EQ(arr.find(20), 1);
+  CHECK_EQ(arr.find(50), 4);
+  CHECK_EQ(arr.find(999), -1);
+
+  Array<int> sorted{5, 15, 25, 35, 45};
+  CHECK_EQ(sorted.findSorted(5), 0);
+  CHECK_EQ(sorted.findSorted(25), 2);
+  CHECK_EQ(sorted.findSorted(45), 4);
+  CHECK_EQ(sorted.findSorted(1), -1);
+  CHECK_EQ(sorted.findSorted(20), -1);
+  CHECK_EQ(sorted.findSorted(100), -1);
+
+  Array<int> u;
+  CHECK_EQ(u.insertUnique(100), 0);
+  CHECK_EQ(u.size(), 1);
+  CHECK_EQ(u.insertUnique(200), 1);
+  CHECK_EQ(u.size(), 2);
+  CHECK_EQ(u.insertUnique(100), 0); // duplicate
+  CHECK_EQ(u.size(), 2);
+  CHECK_EQ(u.insertUnique(300), 2);
+  CHECK_EQ(u.size(), 3);
+  CHECK_EQ(u.insertUnique(200), 1); // duplicate
+  CHECK_EQ(u.size(), 3);
+
+  // Active guard prevents insertUnique from inserting new element
+  {
+    auto r = u.hostRead();
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    CHECK_EQ(u.insertUnique(999), -1);
+    CHECK_EQ(u.size(), 3);
+  }
+}
+
 } // namespace
 
 int main() {
@@ -224,5 +264,6 @@ int main() {
   testPointerWrap();
   testIteratorsAndStlCompatibility();
   testAppendRange();
+  testFindAndInsertUnique();
   return 0;
 }

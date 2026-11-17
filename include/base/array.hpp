@@ -1397,13 +1397,14 @@ public:
       if (size_ == old + n) {
         T *p = (old == 0) ? acquireWrite(MemorySide::HOST, size_)
                           : acquireRW(MemorySide::HOST, size_);
-        if (p != nullptr) [[unlikely]] {
+        if (p != nullptr) [[likely]] {
           std::ranges::copy(range, p + old);
         }
       }
       return size_;
     }
   }
+
   void popBack() {
     if (!ensureNoActiveGuards("popBack")) {
       return;
@@ -1411,6 +1412,38 @@ public:
     if (size_ > 0) {
       --size_;
     }
+  }
+
+  [[nodiscard]] int find(const T &v) const {
+    auto s = view();
+    for (int i = 0; i < static_cast<int>(s.size()); ++i) {
+      if (s[static_cast<std::size_t>(i)] == v) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  [[nodiscard]] int findSorted(const T &v) const {
+    auto s  = view();
+    auto it = std::ranges::lower_bound(s, v);
+    if (it == s.end() || !(*it == v)) {
+      return -1;
+    }
+    return static_cast<int>(it - s.begin());
+  }
+
+  [[nodiscard]] int insertUnique(const T &v) {
+    const int i = find(v);
+    if (i >= 0) {
+      return i;
+    }
+    const int old_size = size_;
+    const int new_size = append(v);
+    if (new_size == old_size) [[unlikely]] {
+      return -1;
+    }
+    return new_size - 1;
   }
 };
 
