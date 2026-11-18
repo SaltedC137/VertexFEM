@@ -1280,7 +1280,8 @@ public:
       T *d_dst       = out.acquireWrite(MemorySide::DEVICE, size_);
       if (d_src != nullptr && d_dst != nullptr) [[likely]] {
         if (!MemoryManager::get().copy(d_dst, memory_.getDeviceMemType(), d_src,
-                                       memory_.getDeviceMemType(), byteSize())) {
+                                       memory_.getDeviceMemType(),
+                                       byteSize())) {
           vfemError("Array::copy: device-to-device copy failed");
         }
         return;
@@ -1542,6 +1543,15 @@ public:
       }
     }
     size_ -= rm;
+  }
+
+  void eraseAt(const Array<int> &indices) {
+    if (indices.empty() || size_ == 0) {
+      return;
+    }
+    auto s = indices.view();
+    std::vector<int> v(s.begin(), s.end());
+    eraseAt(v);
   }
 };
 
