@@ -19,5 +19,5 @@ option(VFEM_USE_SIMD         "Enable AVX2/AVX-512 SIMD vectorization intrinsics"
 
 
 option(VFEM_SAFE_THREADS     "Enable thread-safety verification checks" OFF)
-option(ENABLE_ASAN           "Enable AddressSanitizer and LeakSanitizer" OFF)
+option(ENABLE_ASAN           "Enable AddressSanitizer and LeakSanitizer" ON)
 option(BUILD_TESTING         "Build VertexFEM unit tests and benchmark suite" ON)

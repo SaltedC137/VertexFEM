@@ -304,6 +304,109 @@ void testCopy() {
   CHECK_EQ(sub[2], 40);
 }
 
+void testPredicatesAndStats() {
+  Array<int> empty;
+  CHECK(empty.isSorted());
+  CHECK(empty.isConstant());
+  CHECK_EQ(empty.sum(), 0);
+  {
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    CHECK_EQ(empty.max(), 0);
+    CHECK_EQ(empty.min(), 0);
+  }
+
+  Array<int> single{42};
+  CHECK(single.isSorted());
+  CHECK(single.isConstant());
+  CHECK_EQ(single.max(), 42);
+  CHECK_EQ(single.min(), 42);
+  CHECK_EQ(single.sum(), 42);
+
+  Array<int> sorted{1, 2, 2, 3, 5};
+  CHECK(sorted.isSorted());
+  CHECK(!sorted.isConstant());
+  CHECK_EQ(sorted.max(), 5);
+  CHECK_EQ(sorted.min(), 1);
+  CHECK_EQ(sorted.sum(), 13);
+
+  Array<int> unsorted{5, 1, 4, 2};
+  CHECK(!unsorted.isSorted());
+  CHECK(!unsorted.isConstant());
+  CHECK_EQ(unsorted.max(), 5);
+  CHECK_EQ(unsorted.min(), 1);
+  CHECK_EQ(unsorted.sum(), 12);
+
+  Array<int> constant{7, 7, 7, 7};
+  CHECK(constant.isSorted());
+  CHECK(constant.isConstant());
+  CHECK_EQ(constant.max(), 7);
+  CHECK_EQ(constant.min(), 7);
+  CHECK_EQ(constant.sum(), 28);
+
+  Array<double> d_arr{1.5, 2.5, 6.0};
+  CHECK(d_arr.isSorted());
+  CHECK(!d_arr.isConstant());
+  CHECK_EQ(d_arr.max(), 6.0);
+  CHECK_EQ(d_arr.min(), 1.5);
+  CHECK_EQ(d_arr.sum(), 10.0);
+}
+
+void testEraseMethods() {
+  Array<int> arr{10, 20, 30, 20, 40};
+  arr.eraseFirst(999);
+  CHECK_EQ(arr.size(), 5);
+
+  arr.eraseFirst(20);
+  CHECK_EQ(arr.size(), 4);
+  CHECK_EQ(arr[0], 10);
+  CHECK_EQ(arr[1], 30);
+  CHECK_EQ(arr[2], 20);
+  CHECK_EQ(arr[3], 40);
+
+  {
+    auto r = arr.hostRead();
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    arr.eraseFirst(10);
+    CHECK_EQ(arr.size(), 4);
+  }
+
+  Array<int> arr2{0, 1, 2, 3, 4, 5, 6};
+  arr2.eraseAt(std::vector<int>{});
+  CHECK_EQ(arr2.size(), 7);
+
+  arr2.eraseAt(std::vector<int>{4, 1, 1, 5});
+  CHECK_EQ(arr2.size(), 4);
+  CHECK_EQ(arr2[0], 0);
+  CHECK_EQ(arr2[1], 2);
+  CHECK_EQ(arr2[2], 3);
+  CHECK_EQ(arr2[3], 6);
+
+  Array<int> indices{2, 0};
+  arr2.eraseAt(indices);
+  CHECK_EQ(arr2.size(), 2);
+  CHECK_EQ(arr2[0], 2);
+  CHECK_EQ(arr2[1], 6);
+
+  {
+    auto r = arr2.hostRead();
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    arr2.eraseAt(std::vector<int>{0});
+    CHECK_EQ(arr2.size(), 2);
+    arr2.eraseAll();
+    CHECK_EQ(arr2.size(), 2);
+  }
+
+  arr2.eraseAll();
+  CHECK_EQ(arr2.size(), 0);
+  CHECK(arr2.empty());
+
+  Array<int> u;
+  CHECK_EQ(u.unionWith(10), 0);
+  CHECK_EQ(u.unionWith(20), 1);
+  CHECK_EQ(u.unionWith(10), 0);
+  CHECK_EQ(u.size(), 2);
+}
+
 } // namespace
 
 int main() {
@@ -316,5 +419,7 @@ int main() {
   testAppendRange();
   testFindAndInsertUnique();
   testCopy();
+  testPredicatesAndStats();
+  testEraseMethods();
   return 0;
 }

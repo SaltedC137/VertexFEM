@@ -196,8 +196,7 @@ private:
         return;
       }
     }
-    owner_  = std::move(counter);
-    memory_ = owner->memory_;
+    owner_ = std::move(counter);
 
 #if defined(__cpp_exceptions)
     try {
@@ -217,7 +216,9 @@ private:
 #endif
     if (n > 0 && ptr_ == nullptr) {
       release();
+      return;
     }
+    memory_ = owner->memory_;
   }
 
   void release() noexcept {
@@ -477,18 +478,27 @@ private:
       return;
     }
     if (size_ > 0 && !isUnintialized()) {
-      const T *old = acquireRead(MemorySide::HOST, size_);
-      if (old == nullptr) {
-        return;
+      if (memory_.deviceIsValid() && !memory_.hostIsValid() &&
+          memory_.useDevice()) {
+        const T *d_old = acquireRead(MemorySide::DEVICE, size_, false);
+        T *d_dst       = new_mem.write(MemoryClass::DEVICE, new_cap);
+        if (d_old == nullptr || d_dst == nullptr ||
+            !MemoryManager::get().copy(d_dst, new_mem.getDeviceMemType(), d_old,
+                                       memory_.getDeviceMemType(),
+                                       byteSize())) {
+          vfemError("Array::growTo: device-to-device migration failed");
+          return;
+        }
+      } else {
+        const T *old = acquireRead(MemorySide::HOST, size_, false);
+        T *dst       = new_mem.write(MemoryClass::HOST, new_cap);
+        if (old == nullptr || dst == nullptr) {
+          return;
+        }
+        std::memcpy(dst, old, byteSize());
       }
-      T *dst = new_mem.write(MemoryClass::HOST, new_cap);
-      if (dst == nullptr) {
-        return;
-      }
-      std::memcpy(dst, old, byteSize());
     }
     memory_ = std::move(new_mem);
-    active_guards_.reset();
   }
 
   void shrinkToSize() {
@@ -1471,6 +1481,17 @@ public:
     return static_cast<int>(it - s.begin());
   }
 
+  [[nodiscard]] bool isSorted() const { return std::ranges::is_sorted(view()); }
+
+  [[nodiscard]] bool isConstant() const {
+    if (size_ <= 1) {
+      return true;
+    }
+    auto view_ = view();
+    return std::ranges::all_of(view_.subspan(1),
+                               [&](const T &v) { return v == view_[0]; });
+  }
+
   [[nodiscard]] int insertUnique(const T &v) {
     const auto s = view();
     if (size_ > 0 && s.empty()) {
@@ -1553,6 +1574,54 @@ public:
     std::vector<int> v(s.begin(), s.end());
     eraseAt(v);
   }
+
+  void eraseAll() {
+    if (!ensureNoActiveGuards("eraseAll")) {
+      return;
+    }
+    memory_.reset();
+    size_ = 0;
+  }
+
+  [[nodiscard]] T max() const
+    requires std::totally_ordered<T>
+  {
+    if (size_ == 0) [[unlikely]] {
+      vfemError("Array::max empty");
+      return T{};
+    }
+    return *std::ranges::max_element(view());
+  }
+
+  [[nodiscard]] T min() const
+    requires std::totally_ordered<T>
+  {
+    if (size_ == 0) [[unlikely]] {
+      vfemError("Array::min empty");
+      return T{};
+    }
+    return *std::ranges::min_element(view());
+  }
+
+  T sum() const {
+    if (size_ == 0) [[unlikely]] {
+      return T{};
+    }
+    T res{};
+    auto g = hostRead();
+    for (int it = 0; it < size_; ++it) {
+      res += g[it];
+    }
+    return res;
+  }
+
+  void sort() { std::ranges::sort(mutableView()); }
+
+  template <typename Compare> void sort(Compare cmp) {
+    std::ranges::sort(mutableView(), cmp);
+  }
+
+  
 };
 
 template <ArrayElement T> class Matrix {
