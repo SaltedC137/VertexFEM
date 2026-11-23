@@ -25,9 +25,9 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
   if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-O3 -march=native -ffast-math)
+    add_compile_options(-O3 -march=native -fno-math-errno -fno-trapping-math -ffp-contract=fast)
   elseif(MSVC)
-    add_compile_options(/O2 /arch:AVX2)
+    add_compile_options(/O2 /arch:AVX2 /fp:contract)
   endif()
 endif()
 

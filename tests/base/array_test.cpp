@@ -349,6 +349,20 @@ void testPredicatesAndStats() {
   CHECK_EQ(d_arr.max(), 6.0);
   CHECK_EQ(d_arr.min(), 1.5);
   CHECK_EQ(d_arr.sum(), 10.0);
+
+  Array<int> neg{-8, -3, -5};
+  CHECK(!neg.isSorted());
+  CHECK(!neg.isConstant());
+  CHECK_EQ(neg.max(), -3);
+  CHECK_EQ(neg.min(), -8);
+  CHECK_EQ(neg.sum(), -16);
+
+  Array<int> neg_sorted{-10, -5, -1};
+  CHECK(neg_sorted.isSorted());
+  CHECK(!neg_sorted.isConstant());
+  CHECK_EQ(neg_sorted.max(), -1);
+  CHECK_EQ(neg_sorted.min(), -10);
+  CHECK_EQ(neg_sorted.sum(), -16);
 }
 
 void testEraseMethods() {
@@ -405,6 +419,28 @@ void testEraseMethods() {
   CHECK_EQ(u.unionWith(20), 1);
   CHECK_EQ(u.unionWith(10), 0);
   CHECK_EQ(u.size(), 2);
+
+  Array<int> empty_erase;
+  empty_erase.eraseFirst(10);
+  CHECK_EQ(empty_erase.size(), 0);
+  empty_erase.eraseAt(std::vector<int>{0});
+  CHECK_EQ(empty_erase.size(), 0);
+
+  Array<int> oob_arr{1, 2, 3};
+  {
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    oob_arr.eraseAt(std::vector<int>{-1});
+    CHECK_EQ(oob_arr.size(), 3);
+    oob_arr.eraseAt(std::vector<int>{5});
+    CHECK_EQ(oob_arr.size(), 3);
+    oob_arr.eraseAt(std::vector<int>{-5, 10});
+    CHECK_EQ(oob_arr.size(), 3);
+  }
+
+  Array<int> del_all{10, 20, 30};
+  del_all.eraseAt(std::vector<int>{0, 1, 2});
+  CHECK_EQ(del_all.size(), 0);
+  CHECK(del_all.empty());
 }
 
 } // namespace

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -17,14 +18,6 @@
 #include <limits>
 #include <mutex>
 #include <type_traits>
-
-#ifdef VFEM_USE_MPI
-#define HYPRE_TIMING
-#include <HYPRE_utilities.h>
-#if (21400 <= VFEM_HYPRE_VERSION) && (VFEM_HYPRE_VERSION < 21900)
-#include <_hypre_utilities.h>
-#endif
-#endif
 
 namespace vfem {
 
@@ -145,6 +138,41 @@ nextState(MemoryState current, MemorySide target, AccessMode mode) noexcept {
 
   return {false, Transfer::NONE, current};
 }
+// compress to one cache line
+
+struct StateTransitionTable {
+  StateTransition table[5][2][3]{};
+};
+
+[[nodiscard]] consteval StateTransitionTable
+buildStateTransitionTable() noexcept {
+  StateTransitionTable out{};
+  for (int s = 0; s < 5; ++s) {
+    for (int side = 0; side < 2; ++side) {
+      for (int mode = 0; mode < 3; ++mode) {
+        out.table[s][side][mode] = nextState(static_cast<MemoryState>(s),
+                                             static_cast<MemorySide>(side),
+                                             static_cast<AccessMode>(mode));
+      }
+    }
+  }
+  return out;
+}
+
+inline constexpr StateTransitionTable kStateTransitionLUT =
+    buildStateTransitionTable();
+
+[[nodiscard]] constexpr StateTransition
+lookupNextState(MemoryState current, MemorySide target,
+                AccessMode mode) noexcept {
+  const auto s  = static_cast<unsigned>(current);
+  const auto sd = static_cast<unsigned>(target);
+  const auto md = static_cast<unsigned>(mode);
+  if (s >= 5U || sd >= 2U || md >= 3U) [[unlikely]] {
+    return {false, Transfer::NONE, current};
+  }
+  return kStateTransitionLUT.table[s][sd][md];
+}
 
 [[nodiscard]] inline bool isHostMemory(MemType type) noexcept {
   switch (type) {
@@ -188,7 +216,7 @@ concept DeviceCopyable =
 
 using DeallocateFunc = void (*)(void *, std::size_t alignment) noexcept;
 
-struct MemoryRecord final {
+struct VFEM_EXPORT MemoryRecord final {
   void *h_ptr{};
   void *d_ptr{};
   std::size_t bytes{};
@@ -200,7 +228,7 @@ struct MemoryRecord final {
   DeallocateFunc d_deallocate{};
   bool owns_h{};
   bool owns_d{};
-  MemoryState state{MemoryState::EMPTY};
+  std::atomic<MemoryState> state{MemoryState::EMPTY};
 
   MemoryRecord()                                = default;
   MemoryRecord(const MemoryRecord &)            = delete;
@@ -329,6 +357,17 @@ public:
     flags = use_dev ? (flags | USE_DEVICE) : (flags & ~USE_DEVICE);
   };
 
+  [[nodiscard]] const T *rawHostPtr() const noexcept {
+    return (record_ && record_->h_ptr != nullptr)
+               ? viewPointer(static_cast<const void *>(record_->h_ptr))
+               : nullptr;
+  }
+
+  [[nodiscard]] MemoryState state() const noexcept {
+    return record_ ? record_->state.load(std::memory_order_acquire)
+                   : MemoryState::EMPTY;
+  }
+
   inline void sync(const Memory &other) const;
 
   inline void syncAlias(const Memory &base, int alias_size) const;
@@ -387,29 +426,6 @@ private:
   void refreshView() const noexcept;
   void configureTypes(MemType memory_type);
   void moveFrom(Memory &&other) noexcept;
-
-#if defined(VFEM_USE_CUDA) || defined(VFEM_USE_HIP)
-  template <typename U, std::size_t new_align_bytes = alignof(U)>
-  struct AllocDevice {
-    static_assert(new_align_bytes <= 256, "cudaMalloc / hipMalloc");
-    static U *New(std::size_t size) {
-      U *ptr = nullptr;
-#ifdef VFEM_USE_HIP
-      hipMalloc(reinterpret_cast<void **>(&ptr), size * sizeof(U));
-#else
-      cudaMalloc(reinterpret_cast<void **>(&ptr), size * sizeof(U));
-#endif
-      return ptr;
-    }
-    static void Delete(U *ptr) {
-#ifdef VFEM_USE_HIP
-      hipFree(ptr);
-#else
-      cudaFree(ptr);
-#endif
-    }
-  };
-#endif
 };
 
 // MemoryManager class manages memory allocations and deallocations across
@@ -655,7 +671,7 @@ template <DeviceCopyable T> std::size_t Memory<T>::checkedBytes(int size) {
 }
 
 template <DeviceCopyable T> bool Memory<T>::validAccessSize(int size) const {
-  return size >= 0 && static_cast<std::size_t>(size) <= capacity;
+  return static_cast<unsigned int>(size) <= static_cast<unsigned int>(capacity);
 }
 
 template <DeviceCopyable T>
@@ -696,6 +712,13 @@ template <DeviceCopyable T>
 T *Memory<T>::viewPointer(void *base) const noexcept {
   return base == nullptr ? nullptr
                          : static_cast<T *>(base) + byte_offset_ / sizeof(T);
+}
+
+template <DeviceCopyable T>
+const T *Memory<T>::viewPointer(const void *base) const noexcept {
+  return base == nullptr
+             ? nullptr
+             : static_cast<const T *>(base) + byte_offset_ / sizeof(T);
 }
 
 // memory type query methods
@@ -1030,12 +1053,14 @@ template <DeviceCopyable T> void Memory<T>::deleteDevice(bool copy_to_host) {
 
 // Host
 template <DeviceCopyable T> bool Memory<T>::hostIsValid() const noexcept {
-  return record_ && isValidOn(record_->state, MemorySide::HOST);
+  return record_ && isValidOn(record_->state.load(std::memory_order_acquire),
+                              MemorySide::HOST);
 }
 
 // Device
 template <DeviceCopyable T> bool Memory<T>::deviceIsValid() const noexcept {
-  return record_ && isValidOn(record_->state, MemorySide::DEVICE);
+  return record_ && isValidOn(record_->state.load(std::memory_order_acquire),
+                              MemorySide::DEVICE);
 }
 
 // Owns host pointer
@@ -1059,16 +1084,31 @@ template <DeviceCopyable T> void Memory<T>::setHostPtrOwner(bool own) noexcept {
 // Memory Class access methods
 
 template <DeviceCopyable T> T *Memory<T>::readWrite(MemoryClass mc, int size) {
-  if (!validAccessSize(size)) {
+  if (!validAccessSize(size)) [[unlikely]] {
     vfemError("Memory access size is outside the allocated range");
     return nullptr;
   }
   if (size == 0) {
     return nullptr;
   }
-  if (!record_) {
+  if (!record_) [[unlikely]] {
     vfemError("cannot access empty memory");
     return nullptr;
+  }
+  if (mc == MemoryClass::HOST) [[likely]] {
+    if (record_->state.load(std::memory_order_acquire) ==
+            MemoryState::HOST_VALID &&
+        record_->h_ptr != nullptr) [[likely]] {
+      h_ptr = viewPointer(record_->h_ptr);
+      return h_ptr;
+    }
+  } else if (mc == MemoryClass::DEVICE) {
+    if (record_->state.load(std::memory_order_acquire) ==
+            MemoryState::DEVICE_VALID &&
+        record_->d_ptr != nullptr) [[likely]] {
+      d_ptr = viewPointer(record_->d_ptr);
+      return d_ptr;
+    }
   }
   MemorySide side;
   if (!sideFor(mc, side)) {
@@ -1082,16 +1122,31 @@ template <DeviceCopyable T> T *Memory<T>::readWrite(MemoryClass mc, int size) {
 
 template <DeviceCopyable T>
 const T *Memory<T>::read(MemoryClass mc, int size) const {
-  if (!validAccessSize(size)) {
+  if (!validAccessSize(size)) [[unlikely]] {
     vfemError("Memory access size is outside the allocated range");
     return nullptr;
   }
   if (size == 0) {
     return nullptr;
   }
-  if (!record_) {
+  if (!record_) [[unlikely]] {
     vfemError("cannot access empty memory");
     return nullptr;
+  }
+  if (mc == MemoryClass::HOST) [[likely]] {
+    const MemoryState st = record_->state.load(std::memory_order_acquire);
+    if (isValidOn(st, MemorySide::HOST) && record_->h_ptr != nullptr)
+        [[likely]] {
+      h_ptr = viewPointer(record_->h_ptr);
+      return h_ptr;
+    }
+  } else if (mc == MemoryClass::DEVICE) {
+    const MemoryState st = record_->state.load(std::memory_order_acquire);
+    if (isValidOn(st, MemorySide::DEVICE) && record_->d_ptr != nullptr)
+        [[likely]] {
+      d_ptr = viewPointer(record_->d_ptr);
+      return d_ptr;
+    }
   }
   MemorySide side;
   if (!sideFor(mc, side)) {
@@ -1104,21 +1159,43 @@ const T *Memory<T>::read(MemoryClass mc, int size) const {
 }
 
 template <DeviceCopyable T> T *Memory<T>::write(MemoryClass mc, int size) {
-  if (!validAccessSize(size)) {
+  if (!validAccessSize(size)) [[unlikely]] {
     vfemError("Memory access size is outside the allocated range");
     return nullptr;
   }
   if (size == 0) {
     return nullptr;
   }
-  if (!record_) {
+  if (!record_) [[unlikely]] {
+    vfemError("cannot access empty memory");
+  }
+  if (size == 0) {
+    return nullptr;
+  }
+  if (!record_) [[unlikely]] {
     vfemError("cannot access empty memory");
     return nullptr;
+  }
+  if (mc == MemoryClass::HOST) [[likely]] {
+    if (record_->state.load(std::memory_order_acquire) ==
+            MemoryState::HOST_VALID &&
+        record_->h_ptr != nullptr) [[likely]] {
+      h_ptr = viewPointer(record_->h_ptr);
+      return h_ptr;
+    }
+  } else if (mc == MemoryClass::DEVICE) {
+    if (record_->state.load(std::memory_order_acquire) ==
+            MemoryState::DEVICE_VALID &&
+        record_->d_ptr != nullptr) [[likely]] {
+      d_ptr = viewPointer(record_->d_ptr);
+      return d_ptr;
+    }
   }
   const bool whole_record =
       byte_offset_ == 0 &&
       static_cast<std::size_t>(size) * sizeof(T) == record_->bytes;
-  if (!whole_record && record_->state == MemoryState::UNINITIALIZED) {
+  if (!whole_record && record_->state.load(std::memory_order_acquire) ==
+                           MemoryState::UNINITIALIZED) [[unlikely]] {
     vfemError("partial write requires initialized memory");
     return nullptr;
   }

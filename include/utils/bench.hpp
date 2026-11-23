@@ -33,8 +33,11 @@ inline double tscFreqMhz() {
     unsigned int edx;
 
     // Intel: CPUID.15H.ECX = nominal TSC crystal frequency (Hz)
-    if (__get_cpuid(0x15, &eax, &ebx, &ecx, &edx) && ecx != 0) {
-      return (double)ecx * 1e-6;
+    if (__get_cpuid(0x15, &eax, &ebx, &ecx, &edx) && eax != 0 && ebx != 0 &&
+        ecx != 0) {
+      return (static_cast<double>(ecx) * static_cast<double>(ebx) /
+              static_cast<double>(eax)) *
+             1e-6;
     }
 
     // AMD Family 17h+: CPUID.80000007H.EBX[30:0] = TscFreq (KHz)

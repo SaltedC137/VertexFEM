@@ -1590,6 +1590,10 @@ public:
       vfemError("Array::max empty");
       return T{};
     }
+    auto s = view();
+    if (s.empty()) [[unlikely]] {
+      return T{};
+    }
     return *std::ranges::max_element(view());
   }
 
@@ -1615,13 +1619,64 @@ public:
     return res;
   }
 
-  void sort() { std::ranges::sort(mutableView()); }
-
-  template <typename Compare> void sort(Compare cmp) {
-    std::ranges::sort(mutableView(), cmp);
+  void sort()
+    requires std::totally_ordered<T>
+  {
+    if (size_ <= 1) {
+      return;
+    }
+    if (!ensureNoActiveGuards("sort")) {
+      return;
+    }
+    if (isUnintialized()) [[unlikely]] {
+      vfemError("Array::sort: uninitialized array");
+      return;
+    }
+    auto s = mutableView();
+    if (!s.empty()) [[likely]] {
+      std::ranges::sort(s);
+    }
   }
 
-  
+  template <typename Compare>
+    requires std::sortable<T *, Compare>
+  void sort(Compare cmp) {
+    if (size_ <= 1) {
+      return;
+    }
+    if (!ensureNoActiveGuards("sort")) {
+      return;
+    }
+    if (isUnintialized()) [[unlikely]] {
+      vfemError("Array::sort: uninitialized array");
+      return;
+    }
+    auto s = mutableView();
+    if (!s.empty()) [[likely]] {
+      std::ranges::sort(s, std::move(cmp));
+    }
+  }
+
+  void unique()
+    requires std::equality_comparable<T>
+  {
+    if (size_ <= 1) {
+      return;
+    }
+    if (!ensureNoActiveGuards("unique")) {
+      return;
+    }
+    if (isUnintialized()) [[unlikely]] {
+      vfemError("Array::unique: uninitialized array");
+      return;
+    }
+    auto s = mutableView();
+    if (s.empty()) [[unlikely]] {
+      return;
+    }
+    auto result = std::ranges::unique(s);
+    size_       = static_cast<int>(result.begin() - s.begin());
+  }
 };
 
 template <ArrayElement T> class Matrix {
