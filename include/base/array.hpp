@@ -11,6 +11,8 @@
 #include <limits>
 #include <memory>
 #include <ranges>
+#include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -20,7 +22,6 @@
 
 #include "config.hpp" // IWYU pragma: keep
 #include "error.hpp"
-#include "global.hpp" // IWYU pragma: keep
 #include "mem_manager.hpp"
 
 #include <cassert>
@@ -54,6 +55,10 @@ concept ArrayElement = DeviceCopyable<T>;
 template <ArrayElement T> class Array;
 template <ArrayElement T> class Matrix;
 template <ArrayElement T> class Tensor;
+
+struct alignas(64) GuardCounter {
+  std::atomic<int> value{0};
+};
 
 template <ArrayElement T, MemorySide S, AccessMode M> class AccessGuard;
 
@@ -168,16 +173,13 @@ private:
       size_ = 0;
       return;
     }
-    if (!owner->active_guards_) {
-      owner->active_guards_ = std::make_shared<std::atomic<int>>(0);
-    }
-    auto counter = owner->active_guards_;
-    int expected = counter->load(std::memory_order_relaxed);
+    auto counter = owner->ensureGuardCounter();
+    int expected = counter->value.load(std::memory_order_relaxed);
     if constexpr (IsReadOnly) {
       while (expected >= 0 && expected < std::numeric_limits<int>::max() &&
-             !counter->compare_exchange_weak(expected, expected + 1,
-                                             std::memory_order_acquire,
-                                             std::memory_order_relaxed)) {
+             !counter->value.compare_exchange_weak(expected, expected + 1,
+                                                   std::memory_order_acquire,
+                                                   std::memory_order_relaxed)) {
       }
       if (expected < 0 || expected == std::numeric_limits<int>::max()) {
         ptr_  = nullptr;
@@ -187,9 +189,9 @@ private:
       }
     } else {
       expected = 0;
-      if (!counter->compare_exchange_strong(expected, -1,
-                                            std::memory_order_acquire,
-                                            std::memory_order_relaxed)) {
+      if (!counter->value.compare_exchange_strong(expected, -1,
+                                                  std::memory_order_acquire,
+                                                  std::memory_order_relaxed)) {
         ptr_  = nullptr;
         size_ = 0;
         vfemError("AccessGuard: conflicting access");
@@ -198,7 +200,7 @@ private:
     }
     owner_ = std::move(counter);
 
-#if defined(__cpp_exceptions)
+#ifdef __cpp_exceptions
     try {
 #endif
       if constexpr (IsReadOnly) {
@@ -208,7 +210,7 @@ private:
       } else {
         ptr_ = owner->acquireRW(S, n, false);
       }
-#if defined(__cpp_exceptions)
+#ifdef __cpp_exceptions
     } catch (...) {
       release();
       throw;
@@ -224,9 +226,9 @@ private:
   void release() noexcept {
     if (owner_) {
       if constexpr (IsReadOnly) {
-        owner_->fetch_sub(1, std::memory_order_release);
+        owner_->value.fetch_sub(1, std::memory_order_release);
       } else {
-        owner_->fetch_add(1, std::memory_order_release);
+        owner_->value.fetch_add(1, std::memory_order_release);
       }
       owner_.reset();
     }
@@ -237,7 +239,7 @@ private:
 
   pointer ptr_{nullptr};
   int size_{0};
-  std::shared_ptr<std::atomic<int>> owner_;
+  std::shared_ptr<GuardCounter> owner_;
   Memory<T> memory_;
 };
 
@@ -356,7 +358,8 @@ template <ArrayElement T> class Array {
 protected:
   Memory<T> memory_;
   int size_{0};
-  mutable std::shared_ptr<std::atomic<int>> active_guards_;
+  mutable std::atomic<std::uint8_t> guard_init_state_{0};
+  mutable std::shared_ptr<GuardCounter> active_guards_;
 
 public:
   using value_type      = T;
@@ -376,9 +379,49 @@ private:
   template <ArrayElement> friend class Array;
   template <ArrayElement, MemorySide, AccessMode> friend class AccessGuard;
 
+  std::shared_ptr<GuardCounter> ensureGuardCounter() const {
+    for (;;) {
+      const std::uint8_t st = guard_init_state_.load(std::memory_order_acquire);
+      if (st == 2U) [[likely]] {
+        return active_guards_;
+      }
+      if (st == 0U) {
+        std::uint8_t expected = 0U;
+        if (guard_init_state_.compare_exchange_strong(
+                expected, 1U, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+#ifdef __cpp_exceptions
+          try {
+            active_guards_ = std::shared_ptr<GuardCounter>(new GuardCounter{});
+          } catch (...) {
+            guard_init_state_.store(0U, std::memory_order_release);
+            throw;
+          }
+#else
+          active_guards_ = std::shared_ptr<GuardCounter>(new GuardCounter{});
+#endif
+          guard_init_state_.store(2U, std::memory_order_release);
+          return active_guards_;
+        }
+      }
+      std::this_thread::yield();
+    }
+  }
+
+  void resetGuardCounter() noexcept {
+    active_guards_.reset();
+    guard_init_state_.store(0U, std::memory_order_relaxed);
+  }
+
+  int activeGuardCount() const noexcept {
+    if (guard_init_state_.load(std::memory_order_acquire) != 2U) [[likely]] {
+      return 0;
+    }
+    return active_guards_->value.load(std::memory_order_acquire);
+  }
+
   bool ensureNoActiveGuards(const char *op) const {
-    if (active_guards_ && active_guards_->load(std::memory_order_acquire) != 0)
-        [[unlikely]] {
+    if (activeGuardCount() != 0) [[unlikely]] {
       vfemError(std::string("Array::") + op +
                 ": cannot modify structure while AccessGuard is alive");
       return false;
@@ -418,8 +461,7 @@ private:
 
   const T *acquireRead(MemorySide side, int count,
                        bool check_guards = true) const {
-    if (check_guards && active_guards_ &&
-        active_guards_->load(std::memory_order_acquire) < 0) [[unlikely]] {
+    if (check_guards && activeGuardCount() < 0) [[unlikely]] {
       vfemError("Array::acquireRead: active writer");
       return nullptr;
     }
@@ -499,12 +541,13 @@ private:
       }
     }
     memory_ = std::move(new_mem);
+    resetGuardCounter();
   }
 
   void shrinkToSize() {
     if (size_ == 0) {
       memory_.reset();
-      active_guards_.reset();
+      resetGuardCounter();
       return;
     }
     if (size_ == capacity()) {
@@ -515,18 +558,28 @@ private:
       return;
     }
     if (!isUnintialized()) {
-      const T *old = acquireRead(MemorySide::HOST, size_);
-      if (old == nullptr) {
-        return;
+      if (memory_.deviceIsValid() && !memory_.hostIsValid() &&
+          memory_.useDevice()) {
+        const T *d_old = acquireRead(MemorySide::DEVICE, size_, false);
+        T *d_dst       = new_mem.write(MemoryClass::DEVICE, size_);
+        if (d_old == nullptr || d_dst == nullptr ||
+            !MemoryManager::get().copy(d_dst, new_mem.getDeviceMemType(), d_old,
+                                       memory_.getDeviceMemType(),
+                                       byteSize())) {
+          vfemError("Array::shrinkToSize: device-to-device migration failed");
+          return;
+        }
+      } else {
+        const T *old = acquireRead(MemorySide::HOST, size_, false);
+        T *dst       = new_mem.write(MemoryClass::HOST, size_);
+        if (old == nullptr || dst == nullptr) {
+          return;
+        }
+        std::memcpy(dst, old, byteSize());
       }
-      T *dst = new_mem.write(MemoryClass::HOST, size_);
-      if (dst == nullptr) {
-        return;
-      }
-      std::memcpy(dst, old, byteSize());
     }
     memory_ = std::move(new_mem);
-    active_guards_.reset();
+    resetGuardCounter();
   }
 
 public:
@@ -593,19 +646,29 @@ public:
       : memory_(allocateLike(other.memory_, other.size_)),
         size_(memory_.capaCity()) {
     if (size_ > 0 && !other.isUnintialized()) {
-      const T *src = other.acquireRead(MemorySide::HOST, size_);
-      if (src == nullptr) {
-        memory_.reset();
-        size_ = 0;
-        return;
+      if (other.memory_.deviceIsValid() && !other.memory_.hostIsValid() &&
+          other.memory_.useDevice()) {
+        const T *d_src = other.acquireRead(MemorySide::DEVICE, size_);
+        T *d_dst       = memory_.write(MemoryClass::DEVICE, size_);
+        if (d_src == nullptr || d_dst == nullptr ||
+            !MemoryManager::get().copy(d_dst, memory_.getDeviceMemType(), d_src,
+                                       other.memory_.getDeviceMemType(),
+                                       byteSize())) {
+          vfemError("Array::Array(const Array&): device copy failed");
+          memory_.reset();
+          size_ = 0;
+        }
+      } else {
+        const T *src = other.acquireRead(MemorySide::HOST, size_);
+        T *dst = (src != nullptr) ? acquireWrite(MemorySide::HOST, size_, false)
+                                  : nullptr;
+        if (src == nullptr || dst == nullptr) {
+          memory_.reset();
+          size_ = 0;
+          return;
+        }
+        std::memcpy(dst, src, byteSize());
       }
-      T *dst = acquireWrite(MemorySide::HOST, size_);
-      if (dst == nullptr) {
-        memory_.reset();
-        size_ = 0;
-        return;
-      }
-      std::memcpy(dst, src, byteSize());
     }
   }
 
@@ -637,8 +700,11 @@ public:
 
   Array(Array &&other) noexcept
       : memory_(std::move(other.memory_)), size_(other.size_),
+        guard_init_state_(
+            other.guard_init_state_.load(std::memory_order_acquire)),
         active_guards_(std::move(other.active_guards_)) {
     other.size_ = 0;
+    other.guard_init_state_.store(0U, std::memory_order_relaxed);
   }
 
   ~Array() = default;
@@ -654,7 +720,7 @@ public:
       }
       memory_.swap(tmp.memory_);
       std::swap(size_, tmp.size_);
-      active_guards_.swap(tmp.active_guards_);
+      resetGuardCounter();
     }
     return *this;
   }
@@ -662,14 +728,19 @@ public:
   // NOLINTNEXTLINE(performance-noexcept-move-constructor,bugprone-exception-escape)
   Array &operator=(Array &&other) {
     if (this != &other) {
-      if (!ensureNoActiveGuards("operator=(Array&&)")) {
+      if (!ensureNoActiveGuards("operator=(Array&&)") ||
+          !other.ensureNoActiveGuards("operator=(Array&&) source")) {
         return *this;
       }
 
       memory_        = std::move(other.memory_);
       size_          = other.size_;
       active_guards_ = std::move(other.active_guards_);
-      other.size_    = 0;
+      guard_init_state_.store(
+          other.guard_init_state_.load(std::memory_order_acquire),
+          std::memory_order_release);
+      other.size_ = 0;
+      other.guard_init_state_.store(0U, std::memory_order_relaxed);
     }
     return *this;
   }
@@ -710,17 +781,19 @@ public:
       vfemError("Array::alias_of: range out of bounds");
       return {};
     }
+    if (base.activeGuardCount() < 0) [[unlikely]] {
+      vfemError("Array::alias_of: active writer on base");
+      return {};
+    }
     Array out;
     if (n == 0) {
       out.memory_ = allocateLike(base.memory_, 0);
       return out;
     }
-    if (!base.active_guards_) {
-      base.active_guards_ = std::make_shared<std::atomic<int>>(0);
-    }
     out.memory_.makeAlias(base.memory_, offset, n);
-    out.active_guards_ = base.active_guards_;
-    out.size_          = n;
+    out.active_guards_ = base.ensureGuardCounter();
+    out.guard_init_state_.store(2U, std::memory_order_release);
+    out.size_ = n;
     return out;
   }
 
@@ -760,7 +833,10 @@ public:
     }
     memory_        = std::move(replacement.memory_);
     active_guards_ = std::move(replacement.active_guards_);
-    size_          = n;
+    guard_init_state_.store(
+        replacement.guard_init_state_.load(std::memory_order_acquire),
+        std::memory_order_release);
+    size_ = n;
   }
 
   /**
@@ -796,8 +872,8 @@ public:
     }
     const T *current  = nullptr;
     bool owns_current = false;
-    if (mt == memory_.getHostMemType() && memory_.hostIsValid()) {
-      current      = memory_.read(MemoryClass::HOST, capacity());
+    if (mt == memory_.getHostMemType()) {
+      current      = memory_.rawHostPtr();
       owns_current = memory_.ownsHostPtr();
     } else if (mt == memory_.getDeviceMemType() && memory_.deviceIsValid()) {
       current      = memory_.read(MemoryClass::DEVICE, capacity());
@@ -817,7 +893,7 @@ public:
         if (!own || owns_current) {
           if (n == 0) {
             memory_.reset();
-            active_guards_.reset();
+            resetGuardCounter();
           } else {
             memory_.makeAlias(memory_,
                               static_cast<int>(offset_bytes / sizeof(T)), n);
@@ -837,7 +913,7 @@ public:
       return;
     }
     memory_ = std::move(replacement.memory_);
-    active_guards_.reset();
+    resetGuardCounter();
     size_ = n;
   }
 
@@ -856,6 +932,20 @@ public:
   }
 
   std::size_t memoryUsage() const noexcept { return byteCapacity(); }
+
+  void swap(Array &other) noexcept {
+    if (this == &other) {
+      return;
+    }
+    memory_.swap(other.memory_);
+    std::swap(size_, other.size_);
+    active_guards_.swap(other.active_guards_);
+    const std::uint8_t s1 = guard_init_state_.load(std::memory_order_acquire);
+    const std::uint8_t s2 =
+        other.guard_init_state_.load(std::memory_order_acquire);
+    guard_init_state_.store(s2, std::memory_order_release);
+    other.guard_init_state_.store(s1, std::memory_order_release);
+  }
 
   /**
    * @brief Pre-allocates storage capacity to accommodate at least @p n
@@ -950,13 +1040,14 @@ public:
       return;
     }
     const bool use_dev = memory_.useDevice();
-    Memory<T> new_mem(n, mt);
+    Memory<T> new_mem =
+        (mt == MemType::PRESERVE) ? allocateLike(memory_, n) : Memory<T>(n, mt);
     if (new_mem.capaCity() != n) {
       return;
     }
     new_mem.useDevice(use_dev);
     memory_ = std::move(new_mem);
-    active_guards_.reset();
+    resetGuardCounter();
     size_ = n;
   }
 
@@ -983,7 +1074,7 @@ public:
         return;
       }
       memory_ = std::move(new_mem);
-      active_guards_.reset();
+      resetGuardCounter();
     }
     size_ = n;
   }
@@ -1153,7 +1244,7 @@ public:
     if (size_ == 0) {
       return;
     }
-    T *buffer = acquireRW(MemorySide::HOST, size_);
+    T *buffer = acquireWrite(MemorySide::HOST, size_);
     if (buffer == nullptr) [[unlikely]] {
       return;
     }
@@ -1181,9 +1272,7 @@ public:
       vfemError("Array::assign: null source pointer with positive size");
       return;
     }
-    const T *current       = memory_.hostIsValid()
-                                 ? memory_.read(MemoryClass::HOST, capacity())
-                                 : nullptr;
+    const T *current       = memory_.rawHostPtr();
     const auto src_addr    = reinterpret_cast<std::uintptr_t>(src);
     const auto cur_addr    = reinterpret_cast<std::uintptr_t>(current);
     const bool is_internal = (current != nullptr && src_addr >= cur_addr &&
@@ -1200,7 +1289,7 @@ public:
         std::memmove(dst, src, copy_count * sizeof(T));
       }
       memory_ = std::move(new_mem);
-      active_guards_.reset();
+      resetGuardCounter();
       size_ = n;
       return;
     }
@@ -1280,17 +1369,26 @@ public:
     if (this == &out) [[unlikely]] {
       return;
     }
+    if (!out.ensureNoActiveGuards("copy")) {
+      return;
+    }
     if (size_ == 0) {
       out.setSize(0);
       return;
     }
     if (memory_.deviceIsValid() && memory_.useDevice()) {
-      out.setSize(size_, memory_.getDeviceMemType());
+      if (out.capacity() < size_ ||
+          out.memory_.getDeviceMemType() != memory_.getDeviceMemType()) {
+        out.setSize(size_, memory_.getDeviceMemType());
+      } else {
+        out.setSize(size_);
+      }
+      out.memory_.useDevice(true);
       const T *d_src = acquireRead(MemorySide::DEVICE, size_);
       T *d_dst       = out.acquireWrite(MemorySide::DEVICE, size_);
       if (d_src != nullptr && d_dst != nullptr) [[likely]] {
-        if (!MemoryManager::get().copy(d_dst, memory_.getDeviceMemType(), d_src,
-                                       memory_.getDeviceMemType(),
+        if (!MemoryManager::get().copy(d_dst, out.memory_.getDeviceMemType(),
+                                       d_src, memory_.getDeviceMemType(),
                                        byteSize())) {
           vfemError("Array::copy: device-to-device copy failed");
         }
@@ -1306,12 +1404,22 @@ public:
   }
 
   void getSubArray(int offset, int n, Array<T> &out) const {
-    if (offset < 0 || n < 0 || offset + n > size_) [[unlikely]] {
+    if (offset < 0 || n < 0 || offset > size_ || n > size_ - offset)
+        [[unlikely]] {
       vfemError("Array::getSubArray: range out of bounds");
       return;
     }
+    if (this == &out) [[unlikely]] {
+      Array<T> tmp;
+      getSubArray(offset, n, tmp);
+      out = std::move(tmp);
+      return;
+    }
+    if (!out.ensureNoActiveGuards("getSubArray")) {
+      return;
+    }
     out.setSize(n);
-    if (n > 0) {
+    if (n > 0 && out.size_ == n) {
       const T *src = acquireRead(MemorySide::HOST, size_);
       T *dst       = out.acquireWrite(MemorySide::HOST, n);
       if (src != nullptr && dst != nullptr) [[likely]] {
@@ -1370,9 +1478,7 @@ public:
       vfemError("Array::append: size overflow");
       return size_;
     }
-    const T *current       = memory_.hostIsValid()
-                                 ? memory_.read(MemoryClass::HOST, capacity())
-                                 : nullptr;
+    const T *current       = memory_.rawHostPtr();
     const auto src_addr    = reinterpret_cast<std::uintptr_t>(src);
     const auto cur_addr    = reinterpret_cast<std::uintptr_t>(current);
     const bool is_internal = (current != nullptr && src_addr >= cur_addr &&
@@ -1462,17 +1568,17 @@ public:
     }
   }
 
-  [[nodiscard]] int find(const T &v) const {
-    auto s = view();
-    for (int i = 0; i < static_cast<int>(s.size()); ++i) {
-      if (s[static_cast<std::size_t>(i)] == v) {
-        return i;
-      }
-    }
-    return -1;
+  [[nodiscard]] int find(const T &v) const
+    requires std::equality_comparable<T>
+  {
+    auto s  = view();
+    auto it = std::ranges::find(s, v);
+    return it == s.end() ? -1 : static_cast<int>(it - s.begin());
   }
 
-  [[nodiscard]] int findSorted(const T &v) const {
+  [[nodiscard]] int findSorted(const T &v) const
+    requires std::totally_ordered<T>
+  {
     auto s  = view();
     auto it = std::ranges::lower_bound(s, v);
     if (it == s.end() || !(*it == v)) {
@@ -1481,18 +1587,34 @@ public:
     return static_cast<int>(it - s.begin());
   }
 
-  [[nodiscard]] bool isSorted() const { return std::ranges::is_sorted(view()); }
+  [[nodiscard]] bool isSorted() const
+    requires std::totally_ordered<T>
+  {
+    if (size_ <= 1) {
+      return true;
+    }
+    auto s = view();
+    return !s.empty() && std::ranges::is_sorted(s);
+  }
 
-  [[nodiscard]] bool isConstant() const {
+  [[nodiscard]] bool isConstant() const
+    requires std::equality_comparable<T>
+  {
     if (size_ <= 1) {
       return true;
     }
     auto view_ = view();
+    if (view_.empty()) [[unlikely]] {
+      return false;
+    }
+    const T first = view_[0];
     return std::ranges::all_of(view_.subspan(1),
-                               [&](const T &v) { return v == view_[0]; });
+                               [first](const T &v) { return v == first; });
   }
 
-  [[nodiscard]] int insertUnique(const T &v) {
+  [[nodiscard]] int insertUnique(const T &v)
+    requires std::equality_comparable<T>
+  {
     const auto s = view();
     if (size_ > 0 && s.empty()) {
       return -1;
@@ -1511,9 +1633,15 @@ public:
     return new_size - 1;
   }
 
-  [[nodiscard]] int unionWith(const T &v) { return insertUnique(v); }
+  [[nodiscard]] int unionWith(const T &v)
+    requires std::equality_comparable<T>
+  {
+    return insertUnique(v);
+  }
 
-  void eraseFirst(const T &v) {
+  void eraseFirst(const T &v)
+    requires std::equality_comparable<T>
+  {
     if (size_ == 0) {
       return;
     }
@@ -1571,6 +1699,9 @@ public:
       return;
     }
     auto s = indices.view();
+    if (s.empty()) [[unlikely]] {
+      return;
+    }
     std::vector<int> v(s.begin(), s.end());
     eraseAt(v);
   }
@@ -1580,6 +1711,7 @@ public:
       return;
     }
     memory_.reset();
+    resetGuardCounter();
     size_ = 0;
   }
 
@@ -1594,7 +1726,7 @@ public:
     if (s.empty()) [[unlikely]] {
       return T{};
     }
-    return *std::ranges::max_element(view());
+    return *std::ranges::max_element(s);
   }
 
   [[nodiscard]] T min() const
@@ -1604,17 +1736,28 @@ public:
       vfemError("Array::min empty");
       return T{};
     }
-    return *std::ranges::min_element(view());
+    auto s = view();
+    if (s.empty()) [[unlikely]] {
+      return T{};
+    }
+    return *std::ranges::min_element(s);
   }
 
-  T sum() const {
+  [[nodiscard]] T sum() const
+    requires requires(T a, const T &b) { a += b; }
+  {
     if (size_ == 0) [[unlikely]] {
       return T{};
     }
-    T res{};
     auto g = hostRead();
-    for (int it = 0; it < size_; ++it) {
-      res += g[it];
+    if (g.empty()) [[unlikely]] {
+      return T{};
+    }
+    T res{};
+    const T *ptr = g.data();
+    const int n  = g.size();
+    for (int it = 0; it < n; ++it) {
+      res += ptr[it];
     }
     return res;
   }
@@ -1653,7 +1796,7 @@ public:
     }
     auto s = mutableView();
     if (!s.empty()) [[likely]] {
-      std::ranges::sort(s, std::move(cmp));
+      std::ranges::sort(s, cmp);
     }
   }
 
@@ -1678,6 +1821,16 @@ public:
     size_       = static_cast<int>(result.begin() - s.begin());
   }
 };
+
+template <ArrayElement T> void swap(Array<T> &a, Array<T> &b) noexcept {
+  a.swap(b);
+}
+template <ArrayElement T>
+void swap(Matrix<T> & /*a*/, Matrix<T> & /*b*/) noexcept {}
+template <ArrayElement T>
+void swap(Tensor<T> & /*a*/, Tensor<T> & /*b*/) noexcept {}
+template <typename T>
+void swap(BlockArray<T> & /*a*/, BlockArray<T> & /*b*/) noexcept {}
 
 template <ArrayElement T> class Matrix {
 public:

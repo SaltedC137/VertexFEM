@@ -520,13 +520,8 @@ bool Memory<T>::hasRequiredAlignment(const void *ptr, MemType type) noexcept {
 }
 
 template <DeviceCopyable T> void Memory<T>::refreshView() const noexcept {
-
-  h_ptr = record_ && record_->h_ptr
-              ? static_cast<T *>(record_->h_ptr) + byte_offset_ / sizeof(T)
-              : nullptr;
-  d_ptr = record_ && record_->d_ptr
-              ? static_cast<T *>(record_->d_ptr) + byte_offset_ / sizeof(T)
-              : nullptr;
+  h_ptr = record_ ? viewPointer(record_->h_ptr) : nullptr;
+  d_ptr = record_ ? viewPointer(record_->d_ptr) : nullptr;
 }
 
 template <DeviceCopyable T> void Memory<T>::moveFrom(Memory &&other) noexcept {
@@ -710,15 +705,18 @@ MemType Memory<T>::typeFor(MemorySide side) const noexcept {
 
 template <DeviceCopyable T>
 T *Memory<T>::viewPointer(void *base) const noexcept {
-  return base == nullptr ? nullptr
-                         : static_cast<T *>(base) + byte_offset_ / sizeof(T);
+  return base == nullptr
+             ? nullptr
+             : reinterpret_cast<T *>(static_cast<unsigned char *>(base) +
+                                     byte_offset_);
 }
 
 template <DeviceCopyable T>
 const T *Memory<T>::viewPointer(const void *base) const noexcept {
   return base == nullptr
              ? nullptr
-             : static_cast<const T *>(base) + byte_offset_ / sizeof(T);
+             : reinterpret_cast<const T *>(
+                   static_cast<const unsigned char *>(base) + byte_offset_);
 }
 
 // memory type query methods
@@ -1099,14 +1097,14 @@ template <DeviceCopyable T> T *Memory<T>::readWrite(MemoryClass mc, int size) {
     if (record_->state.load(std::memory_order_acquire) ==
             MemoryState::HOST_VALID &&
         record_->h_ptr != nullptr) [[likely]] {
-      h_ptr = viewPointer(record_->h_ptr);
+      refreshView();
       return h_ptr;
     }
   } else if (mc == MemoryClass::DEVICE) {
     if (record_->state.load(std::memory_order_acquire) ==
             MemoryState::DEVICE_VALID &&
         record_->d_ptr != nullptr) [[likely]] {
-      d_ptr = viewPointer(record_->d_ptr);
+      refreshView();
       return d_ptr;
     }
   }
@@ -1137,14 +1135,14 @@ const T *Memory<T>::read(MemoryClass mc, int size) const {
     const MemoryState st = record_->state.load(std::memory_order_acquire);
     if (isValidOn(st, MemorySide::HOST) && record_->h_ptr != nullptr)
         [[likely]] {
-      h_ptr = viewPointer(record_->h_ptr);
+      refreshView();
       return h_ptr;
     }
   } else if (mc == MemoryClass::DEVICE) {
     const MemoryState st = record_->state.load(std::memory_order_acquire);
     if (isValidOn(st, MemorySide::DEVICE) && record_->d_ptr != nullptr)
         [[likely]] {
-      d_ptr = viewPointer(record_->d_ptr);
+      refreshView();
       return d_ptr;
     }
   }
@@ -1168,26 +1166,20 @@ template <DeviceCopyable T> T *Memory<T>::write(MemoryClass mc, int size) {
   }
   if (!record_) [[unlikely]] {
     vfemError("cannot access empty memory");
-  }
-  if (size == 0) {
-    return nullptr;
-  }
-  if (!record_) [[unlikely]] {
-    vfemError("cannot access empty memory");
     return nullptr;
   }
   if (mc == MemoryClass::HOST) [[likely]] {
     if (record_->state.load(std::memory_order_acquire) ==
             MemoryState::HOST_VALID &&
         record_->h_ptr != nullptr) [[likely]] {
-      h_ptr = viewPointer(record_->h_ptr);
+      refreshView();
       return h_ptr;
     }
   } else if (mc == MemoryClass::DEVICE) {
     if (record_->state.load(std::memory_order_acquire) ==
             MemoryState::DEVICE_VALID &&
         record_->d_ptr != nullptr) [[likely]] {
-      d_ptr = viewPointer(record_->d_ptr);
+      refreshView();
       return d_ptr;
     }
   }

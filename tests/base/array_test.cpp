@@ -3,6 +3,9 @@
 #include "utils/check.hpp"
 
 #include <deque>
+#include <functional>
+#include <limits>
+#include <thread>
 #include <vector>
 
 using namespace vfem;
@@ -443,6 +446,121 @@ void testEraseMethods() {
   CHECK(del_all.empty());
 }
 
+void testSortUniqueSwapAndConcurrency() {
+  Array<int> s{4, 1, 3, 1, 2, 3, 4};
+  s.sort();
+  CHECK(s.isSorted());
+  CHECK_EQ(s[0], 1);
+  CHECK_EQ(s[6], 4);
+
+  {
+    auto r = s.hostRead();
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    s.unique();
+    CHECK_EQ(s.size(), 7);
+    s.sort(std::greater<int>{});
+    CHECK_EQ(r[0], 1);
+  }
+
+  s.unique();
+  CHECK_EQ(s.size(), 4);
+  CHECK_EQ(s[0], 1);
+  CHECK_EQ(s[1], 2);
+  CHECK_EQ(s[2], 3);
+  CHECK_EQ(s[3], 4);
+
+  s.sort(std::greater<int>{});
+  CHECK_EQ(s[0], 4);
+  CHECK_EQ(s[3], 1);
+
+  {
+    Array<int> uninit(5);
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    uninit.sort();
+    uninit.unique();
+    CHECK(!uninit.isConstant());
+    CHECK(!uninit.isSorted());
+    CHECK_EQ(uninit.max(), 0);
+    CHECK_EQ(uninit.min(), 0);
+    CHECK_EQ(uninit.sum(), 0);
+  }
+
+  Array<int> lhs{10, 20, 30};
+  {
+    auto r = lhs.hostRead();
+    CHECK_EQ(r[0], 10);
+  }
+  Array<int> rhs;
+  swap(lhs, rhs);
+  CHECK(lhs.empty());
+  CHECK_EQ(rhs.size(), 3);
+  {
+    auto r1 = lhs.hostRead();
+    auto r2 = rhs.hostRead();
+    CHECK(r1.empty());
+    CHECK_EQ(r2[2], 30);
+  }
+
+  rhs.reserve(16);
+  rhs.shrinkToFit();
+  CHECK_EQ(rhs.capacity(), 3);
+  CHECK_EQ(rhs.sum(), 60);
+
+  Array<int> moved(std::move(rhs));
+  CHECK(rhs.empty());
+  CHECK_EQ(moved.size(), 3);
+  {
+    auto r = moved.hostRead();
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    Array<int> target{9};
+    target = std::move(moved);
+    CHECK_EQ(target.size(), 1);
+    CHECK_EQ(moved.size(), 3);
+  }
+  lhs = moved;
+  CHECK_EQ(lhs.sum(), 60);
+  rhs = std::move(moved);
+  CHECK(moved.empty());
+  CHECK_EQ(rhs.sum(), 60);
+
+  Array<int> self_sub{5, 10, 15, 20, 25};
+  {
+    auto r = self_sub.hostRead();
+    Array<int> sub_out;
+    self_sub.getSubArray(1, 3, sub_out);
+    CHECK_EQ(sub_out.size(), 3);
+    CHECK_EQ(sub_out[0], 10);
+    CHECK_EQ(sub_out[2], 20);
+  }
+  self_sub.getSubArray(1, 3, self_sub);
+  CHECK_EQ(self_sub.size(), 3);
+  CHECK_EQ(self_sub[0], 10);
+  CHECK_EQ(self_sub[2], 20);
+  {
+    ErrorActionGuard guard(ErrorAction::Ignore);
+    Array<int> out;
+    self_sub.getSubArray(std::numeric_limits<int>::max(), 2, out);
+    CHECK(out.empty());
+  }
+
+  const Array<int> shared_const{1, 2, 3, 4, 5, 6, 7, 8};
+  std::vector<std::thread> workers;
+  workers.reserve(8);
+  for (int t = 0; t < 8; ++t) {
+    workers.emplace_back([&shared_const]() {
+      for (int iter = 0; iter < 64; ++iter) {
+        auto g = shared_const.hostRead();
+        CHECK_EQ(g.size(), 8);
+        CHECK_EQ(g[0] + g[7], 9);
+      }
+    });
+  }
+  for (auto &th : workers) {
+    th.join();
+  }
+  CHECK_EQ(shared_const.sum(), 36);
+}
+
 } // namespace
 
 int main() {
@@ -457,5 +575,6 @@ int main() {
   testCopy();
   testPredicatesAndStats();
   testEraseMethods();
+  testSortUniqueSwapAndConcurrency();
   return 0;
 }
